@@ -1,0 +1,12 @@
+.env
+.venv/
+__pycache__/
+.pytest_cache/
+*.py[cod]
+storage/uploads/*
+storage/generated/*
+storage/metadata/*
+!storage/uploads/.gitkeep
+!storage/generated/.gitkeep
+!storage/metadata/.gitkeep
+.playwright-mcp/

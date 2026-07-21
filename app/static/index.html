@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="本地商品事实卡与参考图生图工作台">
+  <title>同物景 · 商品好评图工作台</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <div x-data="productStudio()" x-init="init()" class="min-h-screen">
+    <header class="app-header">
+      <div class="shell header-inner">
+        <div class="brand-lockup">
+          <div class="brand-mark" aria-hidden="true">同</div>
+          <div>
+            <h1>同物景</h1>
+            <p>商品好评图工作台</p>
+          </div>
+        </div>
+        <div class="provider-status" x-show="health" x-cloak>
+          <span class="status-dot" :class="health?.status === 'ok' ? 'is-online' : ''"></span>
+          <span>视觉 <strong x-text="health?.vision_provider"></strong></span>
+          <span class="divider"></span>
+          <span>生图 <strong x-text="health?.image_provider"></strong></span>
+        </div>
+      </div>
+    </header>
+
+    <div class="error-banner" x-show="error" x-cloak role="alert" aria-live="assertive">
+      <div class="shell error-inner">
+        <i data-lucide="circle-alert" aria-hidden="true"></i>
+        <span x-text="error"></span>
+        <button type="button" class="icon-button" @click="error = ''" title="关闭错误">
+          <i data-lucide="x" aria-hidden="true"></i><span class="sr-only">关闭</span>
+        </button>
+      </div>
+    </div>
+
+    <main>
+      <section class="workflow-band first-band" aria-labelledby="upload-title">
+        <div class="shell workflow-grid">
+          <div class="step-label"><span>01</span><div><h2 id="upload-title">上传原图</h2><p>JPG · PNG · WEBP</p></div></div>
+          <div class="work-area">
+            <label
+              class="upload-zone"
+              :class="{'is-dragging': dragging, 'has-preview': previewUrl}"
+              @dragover.prevent="dragging = true"
+              @dragleave.prevent="dragging = false"
+              @drop.prevent="handleDrop($event)"
+            >
+              <input class="sr-only" type="file" accept="image/jpeg,image/png,image/webp" @change="handleFile($event.target.files[0])">
+              <template x-if="!previewUrl">
+                <div class="upload-empty">
+                  <span class="upload-icon"><i data-lucide="image-up" aria-hidden="true"></i></span>
+                  <strong>选择商品原图</strong>
+                  <span>或拖拽到此处 · 最大 10MB · 最小边 512px</span>
+                </div>
+              </template>
+              <template x-if="previewUrl">
+                <div class="upload-preview">
+                  <img :src="previewUrl" alt="待上传商品原图预览">
+                  <div class="preview-meta">
+                    <div><strong x-text="selectedFile?.name"></strong><span x-text="formatBytes(selectedFile?.size || 0)"></span></div>
+                    <span class="replace-action"><i data-lucide="replace" aria-hidden="true"></i> 更换图片</span>
+                  </div>
+                </div>
+              </template>
+            </label>
+            <button type="button" class="primary-button upload-button" :disabled="!selectedFile || uploading" @click="upload()">
+              <span class="spinner" x-show="uploading" aria-hidden="true"></span>
+              <i data-lucide="scan-search" x-show="!uploading" aria-hidden="true"></i>
+              <span x-text="uploading ? '正在识别商品…' : '上传并生成事实卡'"></span>
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <section class="workflow-band" x-show="product" x-cloak aria-labelledby="facts-title">
+        <div class="shell workflow-grid">
+          <div class="step-label"><span>02</span><div><h2 id="facts-title">核对事实卡</h2><p>识别结果可编辑</p></div></div>
+          <div class="work-area facts-layout">
+            <div class="source-pane">
+              <div class="pane-heading"><h3>商品原图</h3><span class="provider-chip" x-text="`VISION · ${visionProvider}`"></span></div>
+              <div class="source-image"><img :src="product?.original_image_url" alt="已上传商品原图"></div>
+              <dl class="image-stats">
+                <div><dt>像素</dt><dd x-text="`${product?.image_info?.width} × ${product?.image_info?.height}`"></dd></div>
+                <div><dt>文件</dt><dd x-text="formatBytes(product?.image_info?.size_bytes || 0)"></dd></div>
+              </dl>
+            </div>
+
+            <div class="fact-pane">
+              <div class="pane-heading">
+                <h3>商品事实卡</h3>
+                <span class="saved-state" :class="factSaved ? 'is-saved' : ''"><i data-lucide="check-circle-2" aria-hidden="true"></i><span x-text="factSaved ? '已验证' : '有未保存修改'"></span></span>
+              </div>
+              <div class="quick-fields">
+                <label><span>商品名称</span><input x-model="factCard['商品名称']" @input="markFactChanged()" type="text"></label>
+                <label><span>商品品类</span><input x-model="factCard['商品品类']" @input="markFactChanged()" type="text" placeholder="自由文本"></label>
+                <label><span>识别置信度</span><input x-model="factCard['识别置信度']" @input="markFactChanged()" type="text" placeholder="高 / 中 / 低"></label>
+              </div>
+
+              <div class="fact-summary" x-show="factCard['整体特征']">
+                <div><span>整体特征</span><strong x-text="factCard['整体特征'] || '未填写'"></strong></div>
+              </div>
+
+              <div class="list-columns">
+                <div><h4>保真锁</h4><ul><template x-for="(item, index) in (factCard['保真锁'] || [])" :key="index"><li x-text="item"></li></template><li x-show="!(factCard['保真锁'] || []).length" class="empty">暂无</li></ul></div>
+                <div><h4>不确定项</h4><ul><template x-for="(item, index) in (factCard['不确定项'] || [])" :key="index"><li x-text="item"></li></template><li x-show="!(factCard['不确定项'] || []).length" class="empty">暂无</li></ul></div>
+              </div>
+
+              <details class="json-editor" open>
+                <summary><span>完整 JSON</span><i data-lucide="chevron-down" aria-hidden="true"></i></summary>
+                <textarea x-model="factJson" @input="factSaved = false" spellcheck="false" aria-label="事实卡 JSON 编辑器"></textarea>
+              </details>
+              <div class="button-row">
+                <button type="button" class="secondary-button" @click="copyJson()"><i data-lucide="copy" aria-hidden="true"></i>复制 JSON</button>
+                <button type="button" class="primary-button" :disabled="savingFact" @click="saveFactCard()"><i data-lucide="badge-check" aria-hidden="true"></i><span x-text="savingFact ? '正在验证…' : '验证并保存事实卡'"></span></button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="workflow-band" x-show="product && factSaved" x-cloak aria-labelledby="generate-title">
+        <div class="shell workflow-grid">
+          <div class="step-label"><span>03</span><div><h2 id="generate-title">设置生成</h2><p>每次生成 1 张</p></div></div>
+          <div class="work-area generate-layout">
+            <div class="control-group">
+              <div class="control-heading"><h3>拍摄类型</h3><span>IMAGE · <strong x-text="health?.image_provider || '—'"></strong></span></div>
+              <div class="segmented-control three">
+                <template x-for="type in ['完整照', '中近景', '细节照']" :key="type"><button type="button" :class="{'active': shotType === type}" @click="shotType = type" x-text="type"></button></template>
+              </div>
+            </div>
+            <div class="control-group">
+              <div class="control-heading"><h3>画面比例</h3><span x-text="aspectRatio === '3:4' ? '竖版' : '方图'"></span></div>
+              <div class="segmented-control"><button type="button" :class="{'active': aspectRatio === '3:4'}" @click="aspectRatio = '3:4'">3:4</button><button type="button" :class="{'active': aspectRatio === '1:1'}" @click="aspectRatio = '1:1'">1:1</button></div>
+            </div>
+            <fieldset class="scene-group">
+              <legend>选择场景</legend>
+              <div class="scene-list">
+                <template x-for="(scene, index) in scenes" :key="index">
+                  <label class="scene-option" :class="{'selected': sceneIndex === index}">
+                    <input type="radio" name="scene" :value="index" x-model.number="sceneIndex">
+                    <span class="radio-mark"></span>
+                    <span class="scene-copy"><strong x-text="scene['场景'] || `场景 ${index + 1}`"></strong><span x-text="scene['具体位置'] || '未填写具体位置'"></span></span>
+                    <span class="confidence" :class="confidenceClass(scene)"></span>
+                    <span class="review-flag" x-show="false"></span>
+                  </label>
+                </template>
+                <div class=”empty-scenes” x-show=”!scenes.length”>事实卡中没有候选场景，请先在 JSON 中补充”自然场景”。</div>
+              </div>
+            </fieldset>
+            <div class="generation-action">
+              <button type="button" class="primary-button generate-button" :disabled="generating || sceneIndex < 0" @click="generate()">
+                <span class="spinner" x-show="generating" aria-hidden="true"></span>
+                <i data-lucide="wand-sparkles" x-show="!generating" aria-hidden="true"></i>
+                <span x-text="generating ? '正在生成…' : '生成好评图'"></span>
+              </button>
+              <p>生成 AI 商品场景示意图</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="workflow-band result-band" x-show="result || generating" x-cloak aria-labelledby="result-title">
+        <div class="shell workflow-grid">
+          <div class="step-label"><span>04</span><div><h2 id="result-title">生成结果</h2><p>AI 商品场景示意图</p></div></div>
+          <div class="work-area">
+            <div class="result-loading" x-show="generating"><span class="large-spinner"></span><strong>正在生成场景图</strong><span>真实 provider 可能需要较长时间</span></div>
+            <div class="result-layout" x-show="result && !generating">
+              <div class="result-image"><img :src="result?.generated_image_url" alt="AI 商品场景示意图"></div>
+              <div class="result-panel">
+                <span class="result-kicker">AI 商品场景示意图</span>
+                <h3 x-text="factCard['商品名称']"></h3>
+                <dl class="result-meta">
+                  <div><dt>Provider</dt><dd x-text="result?.provider"></dd></div>
+                  <div><dt>Model</dt><dd x-text="result?.model"></dd></div>
+                  <div><dt>尺寸</dt><dd x-text="result?.size"></dd></div>
+                  <div><dt>耗时</dt><dd x-text="`${result?.elapsed_ms || 0} ms`"></dd></div>
+                  <div><dt>创建时间</dt><dd x-text="formatTime(result?.created_at)"></dd></div>
+                  <div><dt>Seed</dt><dd x-text="result?.seed ?? '不支持'"></dd></div>
+                </dl>
+                <div class="result-actions">
+                  <a class="primary-button" :href="result?.generated_image_url" :download="`${factCard['商品名称'] || 'generated'}.jpg`"><i data-lucide="download" aria-hidden="true"></i>下载图片</a>
+                  <button type="button" class="secondary-button" @click="generate()"><i data-lucide="refresh-cw" aria-hidden="true"></i>重新生成</button>
+                </div>
+                <details class="run-details">
+                  <summary><span>查看本次参数</span><i data-lucide="chevron-down" aria-hidden="true"></i></summary>
+                  <div><h4>压缩后的短提示词</h4><pre x-text="result?.product_brief"></pre></div>
+                  <div><h4>完整 Prompt</h4><pre x-text="result?.prompt"></pre></div>
+                  <div><h4>提交时事实卡</h4><pre x-text="JSON.stringify(result?.fact_card, null, 2)"></pre></div>
+                </details>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+  <script src="/static/app.js"></script>
+</body>
+</html>

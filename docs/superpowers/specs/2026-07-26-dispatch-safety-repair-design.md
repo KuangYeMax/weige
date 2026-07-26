@@ -22,7 +22,7 @@
 
 ## 状态机与人工确认
 
-任务状态扩展为 `ready -> sending -> awaiting_confirmation -> sent`。成功完成所有本地提交后进入 `awaiting_confirmation`，而不是 `sent`。操作人员在 Windows 微信上人工确认消息确已显示在正确会话后，通过受限 API 将任务标记为 `sent`。
+真实发送任务的状态扩展为 `ready -> sending -> awaiting_confirmation -> sent`。成功完成所有本地提交后进入 `awaiting_confirmation`，而不是 `sent`。操作人员在 Windows 微信上人工确认消息确已显示在正确会话后，通过受限 API 将任务标记为 `sent`。dry-run 任务不经过微信发送，直接进入独立终态 `dry_run_complete`，不能由人工确认接口改成 `sent`。
 
 发送过程中任何异常、缺失内容、缺失图片，或在非 Windows 平台尝试实际发送时，任务返回 `ready` 并记录失败原因。启动恢复同时把孤立的 `generating` 和 `sending` 任务恢复为可重试状态；`awaiting_confirmation` 不自动重发，以避免重复消息。
 

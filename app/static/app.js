@@ -30,6 +30,10 @@ function productStudio() {
       return Array.isArray(this.factCard?.['自然场景']) ? this.factCard['自然场景'] : [];
     },
 
+    get hasFactCard() {
+      return !!this.factCard && Object.keys(this.factCard).length > 0;
+    },
+
     get filteredModels() {
       if (!this.selectedProvider) return this.models;
       return this.models.filter(m => m.provider === this.selectedProvider);
@@ -106,10 +110,11 @@ function productStudio() {
         const response = await fetch('/api/products/upload', { method: 'POST', body });
         const payload = await this.readResponse(response);
         this.product = payload;
-        this.visionProvider = payload.vision_provider;
-        this.factCard = payload.fact_card;
-        this.factJson = JSON.stringify(this.factCard, null, 2);
-        this.factSaved = true;
+        this.visionProvider = payload.vision_provider || '待生成';
+        // 事实卡改为「新建待发记录 → generating 阶段」按需生成，上传不再返回事实卡。
+        this.factCard = payload.fact_card || {};
+        this.factJson = this.hasFactCard ? JSON.stringify(this.factCard, null, 2) : '';
+        this.factSaved = this.hasFactCard;
         this.selectSafeDefaultScene();
         this.result = null;
         this.compareResults = null;

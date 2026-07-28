@@ -36,10 +36,8 @@ def test_fact_card_requires_no_mandatory_fields():
     assert card2.product_name == ""
 
 
-def test_user_can_save_edited_fact_card(client, uploaded_product):
-    card = uploaded_product["fact_card"]
-    card["商品名称"] = "用户命名商品"
-    card["商品品类"] = "用户自由填写的品类"
+def test_user_can_save_edited_fact_card(client, uploaded_product, mock_fact_card):
+    card = {**mock_fact_card, "商品名称": "用户命名商品", "商品品类": "用户自由填写的品类"}
 
     response = client.post(
         f"/api/products/{uploaded_product['product_id']}/fact-card",

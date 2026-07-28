@@ -30,6 +30,13 @@ from app.services.db import (
     upsert_product,
 )
 from app.services.dispatch_generation import create_image_provider, generate_image, prepare_generation, run_provider_generation
+from app.services.fact_card import (
+    catalog_name,
+    load_product_metadata,
+    product_metadata_path,
+    save_metadata_json,
+    stored_path,
+)
 from app.services.image_generation.bailian import BailianImageProvider
 from app.services.image_generation.mock import MockImageProvider, GenerationResult
 from app.services.image_generation.models import (
@@ -39,8 +46,6 @@ from app.services.image_generation.models import (
     default_model,
 )
 from app.services.image_generation.volcengine import VolcengineImageProvider, map_aspect_ratio
-from app.services.vision.mock import MockVisionProvider
-from app.services.vision.volcengine import VolcengineVisionProvider
 
 logger = logging.getLogger(__name__)
 
@@ -52,69 +57,12 @@ def _settings(request: Request) -> Settings:
     return request.app.state.settings
 
 
-def _save_json(path: Path, value: dict[str, Any]) -> None:
-    try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        temporary = path.with_suffix(path.suffix + ".tmp")
-        temporary.write_text(json.dumps(value, ensure_ascii=False, indent=2), encoding="utf-8")
-        temporary.replace(path)
-    except OSError as exc:
-        raise AppError("FILE_SAVE_FAILED", "元数据保存失败", 500) from exc
-
-
-def _product_metadata_path(settings: Settings, product_id: str) -> Path:
-    try:
-        safe_id = str(UUID(product_id))
-    except ValueError as exc:
-        raise AppError("PRODUCT_NOT_FOUND", "商品不存在或已被删除", 404) from exc
-    return settings.storage_root / "metadata" / f"product-{safe_id}.json"
-
-
-def _load_product(settings: Settings, product_id: str) -> tuple[Path, dict[str, Any]]:
-    path = _product_metadata_path(settings, product_id)
-    if not path.is_file():
-        raise AppError("PRODUCT_NOT_FOUND", "商品不存在或已被删除", 404)
-    try:
-        return path, json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
-        raise AppError("PRODUCT_METADATA_INVALID", "商品数据无法读取", 500) from exc
-
-
-def _stored_path(settings: Settings, relative_path: str) -> Path:
-    root = settings.storage_root.resolve()
-    candidate = (root / relative_path).resolve()
-    if not candidate.is_relative_to(root) or not candidate.is_file():
-        raise AppError("PRODUCT_METADATA_INVALID", "商品原图无法读取", 500)
-    return candidate
-
-
-def _catalog_name(fact_card: FactCard, original_filename: str | None = None) -> str:
-    name = fact_card.product_name.strip()
-    if name:
-        return name
-    filename_stem = Path(original_filename or "").stem.strip()
-    return filename_stem or "未命名商品"
-
-
 def _cleanup_uploaded_product_files(*paths: Path) -> None:
     for path in paths:
         try:
             path.unlink(missing_ok=True)
         except OSError:
             logger.exception("Failed to clean up uploaded product artifact: %s", path)
-
-
-def _vision_provider(settings: Settings):
-    if settings.vision_provider == "mock":
-        return MockVisionProvider()
-    if settings.vision_provider == "volcengine":
-        return VolcengineVisionProvider(
-            settings.ark_api_key,
-            settings.vision_base_url,
-            settings.ark_vision_model,
-            settings.external_timeout_seconds,
-        )
-    raise AppError("PROVIDER_NOT_FOUND", "视觉 provider 配置无效", 500)
 
 
 def _image_provider(settings: Settings, provider_name: str | None = None, model_id: str | None = None):
@@ -180,41 +128,31 @@ def create_router() -> APIRouter:
             normalized.close()
 
         product_id = str(uuid4())
-        try:
-            fact_card = _vision_provider(settings).analyze(output_path)
-        except Exception:
-            output_path.unlink(missing_ok=True)
-            raise
         relative_path = output_path.relative_to(settings.storage_root).as_posix()
         created_at = datetime.now(timezone.utc).isoformat()
+        # 事实卡推迟到「新建待发记录 → generating 阶段」按需生成；上传只存原图与轻量元数据，不调用视觉模型、不花 token。
         metadata = {
             "product_id": product_id,
             "original_image_path": relative_path,
             "original_size_bytes": len(content),
             "width": width,
             "height": height,
-            "fact_card": fact_card.model_dump(mode="json", by_alias=True),
-            "vision_provider": settings.vision_provider,
-            "vision_model": getattr(_vision_provider(settings), "model", settings.ark_vision_model),
+            "fact_card": None,
+            "vision_provider": None,
+            "vision_model": None,
             "created_at": created_at,
         }
-        metadata_path = _product_metadata_path(settings, product_id)
+        metadata_path = product_metadata_path(settings, product_id)
         try:
-            _save_json(metadata_path, metadata)
-            dims = fact_card.dimensions
+            save_metadata_json(metadata_path, metadata)
+            name = Path(image.filename or "").stem.strip() or "未命名商品"
             upsert_product(
                 settings.db_path,
                 product_id=product_id,
-                name=_catalog_name(fact_card, image.filename),
+                name=name,
                 image_path=relative_path,
                 fact_card_path=metadata_path.relative_to(settings.storage_root).as_posix(),
                 created_at=created_at,
-                height_cm=dims.height_cm,
-                width_cm=dims.width_cm,
-                depth_cm=dims.length_cm,
-                weight_kg=dims.weight_kg,
-                size_source=dims.size_source,
-                room=fact_card.room,
             )
         except AppError:
             _cleanup_uploaded_product_files(metadata_path, output_path)
@@ -225,15 +163,15 @@ def create_router() -> APIRouter:
         return {
             "product_id": product_id,
             "original_image_url": f"/storage/{relative_path}",
-            "fact_card": metadata["fact_card"],
+            "fact_card": None,
             "image_info": {"width": width, "height": height, "size_bytes": len(content)},
-            "vision_provider": settings.vision_provider,
+            "vision_provider": None,
         }
 
     @router.post("/products/{product_id}/fact-card")
     async def save_fact_card(product_id: str, request: Request):
         settings = _settings(request)
-        metadata_path, metadata = _load_product(settings, product_id)
+        metadata_path, metadata = load_product_metadata(settings, product_id)
         try:
             body = await request.json()
             fact_card = FactCard.model_validate(body)
@@ -244,12 +182,12 @@ def create_router() -> APIRouter:
         metadata["fact_card"] = fact_card.model_dump(mode="json", by_alias=True)
         metadata["updated_at"] = datetime.now(timezone.utc).isoformat()
         try:
-            _save_json(metadata_path, metadata)
+            save_metadata_json(metadata_path, metadata)
             dims = fact_card.dimensions
             upsert_product(
                 settings.db_path,
                 product_id=product_id,
-                name=_catalog_name(fact_card),
+                name=catalog_name(fact_card),
                 image_path=metadata.get("original_image_path", ""),
                 fact_card_path=metadata_path.relative_to(settings.storage_root).as_posix(),
                 created_at=metadata.get("created_at") or datetime.now(timezone.utc).isoformat(),
@@ -268,7 +206,7 @@ def create_router() -> APIRouter:
                 metadata.pop("updated_at", None)
             else:
                 metadata["updated_at"] = previous_updated_at
-            _save_json(metadata_path, metadata)
+            save_metadata_json(metadata_path, metadata)
             raise AppError("PRODUCT_DB_SAVE_FAILED", "商品目录更新失败，事实卡未保存", 500) from exc
         return {"fact_card": metadata["fact_card"]}
 
@@ -292,8 +230,8 @@ def create_router() -> APIRouter:
     @router.post("/products/{product_id}/generate")
     def generate_product_image(product_id: str, body: GenerateRequest, request: Request):
         settings = _settings(request)
-        _, product = _load_product(settings, product_id)
-        reference_path = _stored_path(settings, product["original_image_path"])
+        _, product = load_product_metadata(settings, product_id)
+        reference_path = stored_path(settings, product["original_image_path"])
         generation_id = str(uuid4())
         created_at = datetime.now(timezone.utc).isoformat()
         started = time.perf_counter()
@@ -332,12 +270,12 @@ def create_router() -> APIRouter:
         except AppError as exc:
             base_metadata["elapsed_ms"] = round((time.perf_counter() - started) * 1000)
             base_metadata["error_reason"] = exc.code
-            _save_json(generation_path, base_metadata)
+            save_metadata_json(generation_path, base_metadata)
             raise
         except Exception as exc:
             base_metadata["elapsed_ms"] = round((time.perf_counter() - started) * 1000)
             base_metadata["error_reason"] = "INTERNAL_ERROR"
-            _save_json(generation_path, base_metadata)
+            save_metadata_json(generation_path, base_metadata)
             raise AppError("GENERATION_FAILED", "图片生成失败，请稍后重试", 500) from exc
         relative_output = generated.output_path.relative_to(settings.storage_root).as_posix()
         graded_relative = generated.graded_path.relative_to(settings.storage_root).as_posix() if generated.graded_path else None
@@ -362,7 +300,7 @@ def create_router() -> APIRouter:
                 "generation_path": "workbench",
             }
         )
-        _save_json(generation_path, base_metadata)
+        save_metadata_json(generation_path, base_metadata)
         return {
             "generation_id": generation_id,
             "generated_image_url": f"/storage/{relative_output}",
@@ -382,8 +320,8 @@ def create_router() -> APIRouter:
     @router.post("/products/{product_id}/generate-compare")
     async def generate_compare(product_id: str, body: CompareRequest, request: Request):
         settings = _settings(request)
-        _, product = _load_product(settings, product_id)
-        reference_path = _stored_path(settings, product["original_image_path"])
+        _, product = load_product_metadata(settings, product_id)
+        reference_path = stored_path(settings, product["original_image_path"])
 
         fact_card_data = product.get("fact_card")
         if not fact_card_data:
@@ -489,7 +427,7 @@ def create_router() -> APIRouter:
         settings = _settings(request)
         if not product_exists(settings.db_path, product_id):
             raise AppError("PRODUCT_NOT_FOUND", "商品不存在", 404)
-        _, metadata = _load_product(settings, product_id)
+        _, metadata = load_product_metadata(settings, product_id)
         codes = list_codes(settings.db_path, product_id)
         return {
             "product_id": product_id,

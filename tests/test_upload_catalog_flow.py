@@ -48,7 +48,7 @@ def test_uploaded_product_code_rejects_empty_and_global_conflicts(client, image_
     assert duplicate.json()["error"]["code"] == "CODE_CONFLICT"
 
 
-def test_saving_fact_card_updates_name_without_changing_created_at_or_codes(client, image_bytes):
+def test_saving_fact_card_updates_name_without_changing_created_at_or_codes(client, image_bytes, mock_fact_card):
     uploaded = _upload_product(client, image_bytes)
     product_id = uploaded["product_id"]
     code = "KEEP-CODE-001"
@@ -57,7 +57,7 @@ def test_saving_fact_card_updates_name_without_changing_created_at_or_codes(clie
     before = next(
         item for item in client.get("/api/products").json()["products"] if item["product_id"] == product_id
     )
-    fact_card = {**uploaded["fact_card"], "商品名称": "编辑后的商品名称"}
+    fact_card = {**mock_fact_card, "商品名称": "编辑后的商品名称"}
     saved = client.post(f"/api/products/{product_id}/fact-card", json=fact_card)
 
     assert saved.status_code == 200

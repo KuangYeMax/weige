@@ -510,10 +510,5 @@ def _regenerate_content_only(settings: Settings, task_id: str, task: dict, code:
 
 
 def _load_fact_card_for_regen(settings: Settings, product: dict):
-    from app.schemas import FactCard
-    fact_card_path = settings.storage_root / product.get("fact_card_path", "")
-    if not fact_card_path.is_file():
-        from app.errors import AppError
-        raise AppError("FACT_CARD_NOT_FOUND", "产品卡片数据不存在", 500)
-    raw = json.loads(fact_card_path.read_text(encoding="utf-8"))
-    return FactCard.model_validate(raw)
+    from app.services.fact_card import ensure_fact_card
+    return ensure_fact_card(settings, product)

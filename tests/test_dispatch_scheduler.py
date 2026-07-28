@@ -10,6 +10,7 @@ from app.services.db import (
     add_code,
     claim_dispatch_task,
     create_dispatch_task,
+    get_product,
     init_db,
     list_dispatch_tasks,
     recover_generating_dispatch_tasks,
@@ -180,3 +181,79 @@ def test_reserved_code_is_encoded_for_its_dispatch_directory(settings):
     manifest = json.loads((task_dir / "manifest.json").read_text(encoding="utf-8"))
     assert manifest["results"][0]["code"] == code
     assert manifest["results"][0]["image_path"].startswith("manifest%2Ejson/")
+
+
+def test_generating_stage_creates_fact_card_on_demand(settings, client, image_bytes):
+    """上传时不生成事实卡；待发记录 generating 阶段按需生成事实卡并回填产品名。"""
+    upload = client.post(
+        "/api/products/upload",
+        files={"image": ("ondemand.jpg", image_bytes, "image/jpeg")},
+    )
+    assert upload.status_code == 200
+    product_id = upload.json()["product_id"]
+    code = "ONDEMAND-001"
+    assert client.post(f"/api/products/{product_id}/codes", json={"code": code}).status_code == 200
+
+    # 上传后无事实卡，产品名为文件名。
+    before = get_product(settings.db_path, product_id)
+    assert before["name"] == "ondemand"
+    metadata_before = json.loads(
+        (settings.storage_root / before["fact_card_path"]).read_text(encoding="utf-8")
+    )
+    assert metadata_before["fact_card"] is None
+
+    now = datetime.now(timezone.utc)
+    task_id = uuid4().hex
+    create_dispatch_task(
+        settings.db_path, task_id, "测试好友", [code], 1,
+        (now - timedelta(days=1)).isoformat(),
+        (now - timedelta(seconds=1)).isoformat(),
+    )
+
+    assert process_due_tasks(settings, now=now) == 1
+    assert list_dispatch_tasks(settings.db_path)[0]["status"] == "ready"
+
+    # 事实卡已按需生成并回填产品名。
+    after = get_product(settings.db_path, product_id)
+    metadata_after = json.loads(
+        (settings.storage_root / after["fact_card_path"]).read_text(encoding="utf-8")
+    )
+    assert metadata_after["fact_card"] is not None
+    assert metadata_after["fact_card"]["商品名称"]
+    assert after["name"] == metadata_after["fact_card"]["商品名称"]
+
+
+def test_fact_card_is_reused_across_dispatch_tasks(settings, client, image_bytes):
+    """同一产品被两个待发任务用到时，事实卡只生成一次，第二个任务复用。"""
+    upload = client.post(
+        "/api/products/upload",
+        files={"image": ("reuse.jpg", image_bytes, "image/jpeg")},
+    )
+    product_id = upload.json()["product_id"]
+    code = "REUSE-001"
+    assert client.post(f"/api/products/{product_id}/codes", json={"code": code}).status_code == 200
+
+    now = datetime.now(timezone.utc)
+    task1 = uuid4().hex
+    create_dispatch_task(
+        settings.db_path, task1, "测试好友", [code], 1,
+        (now - timedelta(days=1)).isoformat(),
+        (now - timedelta(seconds=2)).isoformat(),
+    )
+    assert process_due_tasks(settings, now=now) == 1
+
+    after_first = get_product(settings.db_path, product_id)
+    first_name = after_first["name"]
+
+    # 第二个待发任务复用已有事实卡（name 不变，未被重新生成覆盖）。
+    task2 = uuid4().hex
+    create_dispatch_task(
+        settings.db_path, task2, "测试好友2", [code], 1,
+        (now - timedelta(days=1)).isoformat(),
+        (now - timedelta(seconds=1)).isoformat(),
+    )
+    assert process_due_tasks(settings, now=now) == 1
+    assert list_dispatch_tasks(settings.db_path)[0]["status"] == "ready"
+
+    after_second = get_product(settings.db_path, product_id)
+    assert after_second["name"] == first_name

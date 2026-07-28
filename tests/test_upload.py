@@ -1,10 +1,8 @@
 import json
 import sqlite3
 
-from app.schemas import FactCard
 
-
-def test_valid_image_upload_returns_accessible_original_and_fact_card(client, image_bytes):
+def test_valid_image_upload_returns_accessible_original_without_fact_card(client, image_bytes):
     response = client.post(
         "/api/products/upload",
         files={"image": ("product.jpg", image_bytes, "image/jpeg")},
@@ -13,12 +11,13 @@ def test_valid_image_upload_returns_accessible_original_and_fact_card(client, im
     assert response.status_code == 200
     payload = response.json()
     assert payload["product_id"]
-    assert FactCard.model_validate(payload["fact_card"])
+    # 事实卡推迟到「新建待发记录 → generating 阶段」生成，上传不再返回。
+    assert payload["fact_card"] is None
     assert payload["image_info"] == {"width": 720, "height": 960, "size_bytes": len(image_bytes)}
     assert client.get(payload["original_image_url"]).status_code == 200
 
 
-def test_upload_persists_catalog_row_with_image_and_fact_card_pointer(client, settings, image_bytes):
+def test_upload_persists_catalog_row_with_image_pointer_only(client, settings, image_bytes):
     response = client.post(
         "/api/products/upload",
         files={"image": ("product.jpg", image_bytes, "image/jpeg")},
@@ -31,25 +30,20 @@ def test_upload_persists_catalog_row_with_image_and_fact_card_pointer(client, se
         for product in client.get("/api/products").json()["products"]
         if product["product_id"] == payload["product_id"]
     )
-    assert product["name"] == payload["fact_card"]["商品名称"]
+    # 上传时用文件名登记，事实卡待 generating 阶段生成时再回填真实名称。
+    assert product["name"] == "product"
     assert product["image_path"] == payload["original_image_url"].removeprefix("/storage/")
     assert product["image_path"].endswith(".jpg")
     assert product["fact_card_path"] == f"metadata/product-{payload['product_id']}.json"
 
     metadata_path = settings.storage_root / product["fact_card_path"]
     metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
-    assert metadata["fact_card"]["商品名称"] == product["name"]
-    assert metadata["fact_card"]["整体特征"]
+    # 事实卡尚未生成。
+    assert metadata["fact_card"] is None
+    assert metadata["original_image_path"].endswith(".jpg")
 
 
-def test_upload_uses_original_filename_when_fact_card_name_is_missing(client, image_bytes, monkeypatch):
-    from app.api import products
-
-    class NamelessVisionProvider:
-        def analyze(self, image_path):
-            return FactCard()
-
-    monkeypatch.setattr(products, "_vision_provider", lambda settings: NamelessVisionProvider())
+def test_upload_uses_original_filename_as_name(client, image_bytes):
     response = client.post(
         "/api/products/upload",
         files={"image": ("上传文件名.png", image_bytes, "image/jpeg")},
@@ -60,6 +54,7 @@ def test_upload_uses_original_filename_when_fact_card_name_is_missing(client, im
     product = next(
         item for item in client.get("/api/products").json()["products"] if item["product_id"] == product_id
     )
+    # 上传不再生成事实卡，产品名直接用文件名（去扩展名）。
     assert product["name"] == "上传文件名"
 
 

@@ -29,6 +29,7 @@ from app.services.db import (
     recover_generating_dispatch_tasks,
     recover_sending_dispatch_tasks,
 )
+from app.services.fact_card import ensure_fact_card
 from app.services.dispatch_generation import generate_content, generate_image
 from app.services.consistency_check import check_consistency
 from app.services.wechat.uia import ChatVerificationError, UIAutomationUnavailableError
@@ -70,18 +71,6 @@ def _write_json(path: Path, data: dict) -> None:
         f.flush()
         os.fsync(f.fileno())
     temporary.replace(path)
-
-
-def _load_fact_card(settings: Settings, product: dict[str, str]) -> FactCard:
-    root = settings.storage_root.resolve()
-    fact_card_path = (root / product["fact_card_path"]).resolve()
-    if not fact_card_path.is_relative_to(root) or not fact_card_path.is_file():
-        raise AppError("FACT_CARD_MISSING", "产品事实卡无法读取", 500)
-    try:
-        metadata = json.loads(fact_card_path.read_text(encoding="utf-8"))
-        return FactCard.model_validate(metadata["fact_card"])
-    except (OSError, KeyError, json.JSONDecodeError, ValueError) as exc:
-        raise AppError("FACT_CARD_INVALID", "产品事实卡无法读取", 500) from exc
 
 
 def _reference_path(settings: Settings, product: dict[str, str]) -> Path:
@@ -165,7 +154,7 @@ def _process_claimed_task(settings: Settings, task: dict) -> None:
             directory_name = _code_directory_name(code)
             code_dir = _safe_child(staging_dir, directory_name)
             code_dir.mkdir(parents=True, exist_ok=False)
-            fact_card = _load_fact_card(settings, product)
+            fact_card = ensure_fact_card(settings, product)
 
             scene_sampler = SceneSampler(fact_card.scenes or [], task_rng)
             scene = scene_sampler.draw()

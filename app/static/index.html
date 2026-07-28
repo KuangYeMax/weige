@@ -73,7 +73,7 @@
             <button type="button" class="primary-button upload-button" :disabled="!selectedFile || uploading" @click="upload()">
               <span class="spinner" x-show="uploading" aria-hidden="true"></span>
               <i data-lucide="scan-search" x-show="!uploading" aria-hidden="true"></i>
-              <span x-text="uploading ? '正在识别商品…' : '上传并生成事实卡'"></span>
+              <span x-text="uploading ? '正在上传…' : '上传产品'"></span>
             </button>
           </div>
         </div>
@@ -97,6 +97,10 @@
                 <h3>商品事实卡</h3>
                 <span class="saved-state" :class="factSaved ? 'is-saved' : ''"><i data-lucide="check-circle-2" aria-hidden="true"></i><span x-text="factSaved ? '已验证' : '有未保存修改'"></span></span>
               </div>
+              <div class="fact-pending" x-show="!hasFactCard" style="padding:1rem;border:1px dashed #cbd5e1;border-radius:8px;background:#f8fafc;color:#475569;font-size:0.875rem;line-height:1.5;">
+                该产品尚未生成事实卡。事实卡将在「待发列表」新建待发记录时由系统自动生成，无需在此手动操作。
+              </div>
+              <template x-if="hasFactCard"><div>
               <div class="quick-fields">
                 <label><span>商品名称</span><input x-model="factCard['商品名称']" @input="markFactChanged()" type="text"></label>
                 <label><span>商品品类</span><input x-model="factCard['商品品类']" @input="markFactChanged()" type="text" placeholder="自由文本"></label>
@@ -120,12 +124,13 @@
                 <button type="button" class="secondary-button" @click="copyJson()"><i data-lucide="copy" aria-hidden="true"></i>复制 JSON</button>
                 <button type="button" class="primary-button" :disabled="savingFact" @click="saveFactCard()"><i data-lucide="badge-check" aria-hidden="true"></i><span x-text="savingFact ? '正在验证…' : '验证并保存事实卡'"></span></button>
               </div>
+              </div></template>
             </div>
           </div>
         </div>
       </section>
 
-      <section class="workflow-band" x-show="product && factSaved" x-cloak aria-labelledby="generate-title">
+      <section class="workflow-band" x-show="product && hasFactCard" x-cloak aria-labelledby="generate-title">
         <div class="shell workflow-grid">
           <div class="step-label"><span>03</span><div><h2 id="generate-title">设置生成</h2><p>单张或全模型对比</p></div></div>
           <div class="work-area generate-layout">

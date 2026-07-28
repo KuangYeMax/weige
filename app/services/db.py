@@ -540,8 +540,9 @@ def recover_sending_dispatch_tasks(db_path: Path) -> int:
 def reschedule_dispatch_task(db_path: Path, task_id: str, new_trigger_at: str) -> dict[str, Any] | None:
     """Update trigger_at and reset status to re-send with existing artifacts.
 
-    - If manifest.json exists → set status to 'ready' (skip generation, just send)
-    - If no manifest → set status to 'pending' (go through generation first)
+    - If manifest.json exists → set status to 'ready' and reset result statuses
+      so the scheduler actually re-sends (skip generation, just re-send).
+    - If no manifest → set status to 'pending' (go through generation first).
     - Returns None if task is in 'generating' or 'sending' status.
     """
     import json as _json
@@ -561,6 +562,11 @@ def reschedule_dispatch_task(db_path: Path, task_id: str, new_trigger_at: str) -
         conn.commit()
         if cursor.rowcount == 0:
             return None
+
+        # Reset manifest result statuses so the scheduler re-sends
+        if has_manifest:
+            _reset_manifest_for_resend(manifest_path)
+
         row = conn.execute(
             "SELECT * FROM dispatch_tasks WHERE task_id = ?", (task_id,)
         ).fetchone()
@@ -579,6 +585,41 @@ def reschedule_dispatch_task(db_path: Path, task_id: str, new_trigger_at: str) -
         }
     finally:
         conn.close()
+
+
+def _reset_manifest_for_resend(manifest_path: Path) -> None:
+    """Rewrite manifest so all results are marked 'ready' for re-sending."""
+    import json as _json
+    try:
+        manifest = _json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, _json.JSONDecodeError):
+        return
+    if not isinstance(manifest, dict):
+        return
+    results = manifest.get("results")
+    if not isinstance(results, list):
+        return
+    changed = False
+    for r in results:
+        if isinstance(r, dict) and r.get("status") in ("local_submitted", "submission_uncertain"):
+            r["status"] = "ready"
+            changed = True
+    if changed:
+        manifest["status"] = "ready"
+        _write_json_safe(manifest_path, manifest)
+
+
+def _write_json_safe(path: Path, data: dict) -> None:
+    import json as _json
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    try:
+        tmp.write_text(_json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+        tmp.replace(path)
+    except Exception:
+        try:
+            tmp.unlink(missing_ok=True)
+        except Exception:
+            pass
 
 
 def mark_dispatch_task_send_failed(db_path: Path, task_id: str, fail_reason: str) -> None:

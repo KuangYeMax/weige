@@ -43,7 +43,6 @@
           </div>
 
           <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6 p-4 bg-gray-50 rounded-lg">
-            <div><div class="text-xs text-gray-500">回传编号</div><div class="font-medium" x-text="task.return_code || '—'"></div></div>
             <div><div class="text-xs text-gray-500">发送编号</div><div class="font-medium" x-text="task.send_codes.join(', ')"></div></div>
             <div><div class="text-xs text-gray-500">倒计时天数</div><div class="font-medium" x-text="task.countdown_days"></div></div>
             <div><div class="text-xs text-gray-500">触发时间</div><div class="font-medium" x-text="formatTime(task.trigger_at)"></div></div>

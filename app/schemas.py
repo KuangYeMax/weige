@@ -108,7 +108,6 @@ class CompareRequest(FactBaseModel):
 
 class DispatchTaskCreate(BaseModel):
     wx_remark: str = Field(..., min_length=1)
-    return_code: str = Field(default="")
     send_codes: list[str] = Field(..., min_length=1, max_length=4)
     countdown_days: int = Field(default=3, ge=1)
 
@@ -120,7 +119,6 @@ class DispatchRemarkVerificationRequest(BaseModel):
 class DispatchTaskOut(BaseModel):
     task_id: str
     wx_remark: str
-    return_code: str
     send_codes: list[str]
     countdown_days: int
     created_at: str

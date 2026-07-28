@@ -283,7 +283,6 @@ def create_dispatch_task(
     db_path: Path,
     task_id: str,
     wx_remark: str,
-    return_code: str,
     send_codes: list[str],
     countdown_days: int,
     created_at: str,
@@ -294,16 +293,15 @@ def create_dispatch_task(
     try:
         conn.execute(
             """INSERT INTO dispatch_tasks
-               (task_id, wx_remark, return_code, send_codes, countdown_days, created_at, trigger_at, status)
-               VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')""",
-            (task_id, wx_remark, return_code, _json.dumps(send_codes, ensure_ascii=False),
+               (task_id, wx_remark, send_codes, countdown_days, created_at, trigger_at, status)
+               VALUES (?, ?, ?, ?, ?, ?, 'pending')""",
+            (task_id, wx_remark, _json.dumps(send_codes, ensure_ascii=False),
              countdown_days, created_at, trigger_at),
         )
         conn.commit()
         return {
             "task_id": task_id,
             "wx_remark": wx_remark,
-            "return_code": return_code,
             "send_codes": send_codes,
             "countdown_days": countdown_days,
             "created_at": created_at,
@@ -327,7 +325,6 @@ def list_dispatch_tasks(db_path: Path) -> list[dict[str, Any]]:
             {
                 "task_id": r["task_id"],
                 "wx_remark": r["wx_remark"],
-                "return_code": r["return_code"],
                 "send_codes": _json.loads(r["send_codes"]),
                 "countdown_days": r["countdown_days"],
                 "created_at": r["created_at"],
@@ -353,7 +350,6 @@ def get_dispatch_task(db_path: Path, task_id: str) -> dict[str, Any] | None:
         return {
             "task_id": row["task_id"],
             "wx_remark": row["wx_remark"],
-            "return_code": row["return_code"],
             "send_codes": json.loads(row["send_codes"]),
             "countdown_days": row["countdown_days"],
             "created_at": row["created_at"],
@@ -398,7 +394,6 @@ def list_due_pending_dispatch_tasks(db_path: Path, now: datetime) -> list[dict[s
             {
                 "task_id": row["task_id"],
                 "wx_remark": row["wx_remark"],
-                "return_code": row["return_code"],
                 "send_codes": json.loads(row["send_codes"]),
                 "countdown_days": row["countdown_days"],
                 "created_at": row["created_at"],
@@ -591,7 +586,6 @@ def list_ready_dispatch_tasks(db_path: Path, now: datetime | None = None) -> lis
                 due.append({
                     "task_id": r["task_id"],
                     "wx_remark": r["wx_remark"],
-                    "return_code": r["return_code"],
                     "send_codes": _json.loads(r["send_codes"]),
                     "countdown_days": r["countdown_days"],
                     "created_at": r["created_at"],

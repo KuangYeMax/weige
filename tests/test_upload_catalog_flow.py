@@ -26,7 +26,7 @@ def test_uploaded_product_can_be_coded_and_registered_for_dispatch(client, image
 
     dispatch = client.post(
         "/api/dispatch",
-        json={"wx_remark": "测试好友", "return_code": "RETURN-001", "send_codes": [code], "countdown_days": 1},
+        json={"wx_remark": "测试好友", "send_codes": [code], "countdown_days": 1},
     )
     assert dispatch.status_code == 200
     assert dispatch.json()["send_codes"] == [code]

@@ -2,7 +2,8 @@ function dispatchApp() {
   return {
     codeMap: {},
     codeInput: '',
-    form: { wx_remark: '', return_code: '', send_codes: [], countdown_days: 3 },
+    batchInput: '',
+    form: { wx_remark: '', send_codes: [], countdown_days: 3 },
     submitting: false,
     formError: '',
     formSuccess: '',
@@ -107,6 +108,38 @@ function dispatchApp() {
 
     removeSendCode(idx) { this.form.send_codes.splice(idx, 1); },
 
+    applyBatchInput() {
+      const text = this.batchInput.trim();
+      if (!text) return;
+      const lines = text.split('\n').filter(l => l.trim());
+      if (!lines.length) return;
+      const first = lines[0].trim();
+      const spaceIdx = first.indexOf(' ');
+      if (spaceIdx === -1) { this.form.wx_remark = first; this.batchInput = ''; return; }
+      this.form.wx_remark = first.substring(0, spaceIdx).trim();
+      const rawCodes = first.substring(spaceIdx + 1).trim();
+      const codes = rawCodes.split(/[,，、\s]+/).filter(c => c.trim());
+      this.form.send_codes = [];
+      for (const code of codes) {
+        if (this.form.send_codes.length >= 4) break;
+        if (this.form.send_codes.some(s => s.code === code)) continue;
+        const info = this.codeMap[code];
+        this.form.send_codes.push({ code, valid: !!info, product_name: info ? info.name : '', image_path: info ? info.image_path : '' });
+      }
+      for (let i = 1; i < lines.length; i++) {
+        if (this.form.send_codes.length >= 4) break;
+        const tokens = lines[i].trim().split(/[,，、\s]+/).filter(c => c.trim());
+        for (const token of tokens) {
+          if (this.form.send_codes.length >= 4) break;
+          if (this.form.send_codes.some(s => s.code === token)) continue;
+          const info = this.codeMap[token];
+          this.form.send_codes.push({ code: token, valid: !!info, product_name: info ? info.name : '', image_path: info ? info.image_path : '' });
+        }
+      }
+      this.verifyResult = 'untested';
+      this.batchInput = '';
+    },
+
     async submit() {
       this.formError = ''; this.formSuccess = '';
       if (!this.canSubmit) return;
@@ -114,14 +147,13 @@ function dispatchApp() {
       try {
         const payload = {
           wx_remark: this.form.wx_remark.trim(),
-          return_code: this.form.return_code.trim(),
           send_codes: this.form.send_codes.map(s => s.code),
           countdown_days: this.form.countdown_days,
         };
         const res = await fetch('/api/dispatch', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
         if (!res.ok) { const e = await res.json(); this.formError = e.error?.message || '提交失败'; return; }
         this.formSuccess = '登记成功';
-        this.form = { wx_remark: '', return_code: '', send_codes: [], countdown_days: 3 };
+        this.form = { wx_remark: '', send_codes: [], countdown_days: 3 };
         this.verifyResult = 'untested';
         await this.loadTasks();
       } catch { this.formError = '网络错误'; }

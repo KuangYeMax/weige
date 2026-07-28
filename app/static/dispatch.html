@@ -33,21 +33,26 @@
       <!-- Registration Form -->
       <div class="bg-white rounded-lg shadow p-6 mb-8">
         <h2 class="text-lg font-semibold text-gray-700 mb-4">新建待发记录</h2>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-          <div>
-            <label class="block text-sm font-medium text-gray-600 mb-1">微信好友备注名 <span class="text-red-500">*</span></label>
-            <div class="flex gap-2">
-              <input type="text" x-model="form.wx_remark" placeholder="买家微信备注名" class="flex-1 border rounded px-3 py-2 text-sm focus:ring-1 focus:ring-blue-400">
-              <button @click="verifyRemark()" :disabled="!form.wx_remark.trim() || verifying" class="px-3 py-2 text-xs border rounded font-medium hover:bg-gray-50 disabled:opacity-50" x-text="verifying ? '校验中...' : '试定位'"></button>
-            </div>
-            <div x-show="verifyResult === 'pass'" class="text-xs text-green-600 mt-1" x-cloak>通过 — 头部名称: <span x-text="verifyHeaderName"></span></div>
-            <div x-show="verifyResult === 'fail'" class="text-xs text-red-600 mt-1" x-cloak>未通过 — <span x-text="verifyFailReason"></span></div>
-            <div x-show="verifyResult === 'untested'" class="text-xs text-gray-400 mt-1" x-cloak>未测试</div>
+
+        <!-- Batch Input -->
+        <div class="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+          <label class="block text-sm font-medium text-blue-800 mb-2">快捷输入</label>
+          <div class="flex gap-2">
+            <textarea x-model="batchInput" rows="2" placeholder="粘贴内容，格式: 备注名 编号1,编号2,编号3&#10;例如: 张三 001,002,003" class="flex-1 border rounded px-3 py-2 text-sm focus:ring-1 focus:ring-blue-400 resize-none"></textarea>
+            <button @click="applyBatchInput()" :disabled="!batchInput.trim()" class="bg-blue-600 text-white px-4 py-2 rounded text-sm font-medium hover:bg-blue-700 disabled:opacity-50 self-end shrink-0">确定</button>
           </div>
-          <div>
-            <label class="block text-sm font-medium text-gray-600 mb-1">回传编号</label>
-            <input type="text" x-model="form.return_code" placeholder="可选" class="w-full border rounded px-3 py-2 text-sm focus:ring-1 focus:ring-blue-400">
+          <div class="text-xs text-blue-500 mt-1">支持格式：<code>备注名 编号1,编号2</code> 或 <code>备注名 编号1、编号2</code></div>
+        </div>
+
+        <div class="mb-4">
+          <label class="block text-sm font-medium text-gray-600 mb-1">微信好友备注名 <span class="text-red-500">*</span></label>
+          <div class="flex gap-2">
+            <input type="text" x-model="form.wx_remark" placeholder="买家微信备注名" class="flex-1 border rounded px-3 py-2 text-sm focus:ring-1 focus:ring-blue-400">
+            <button @click="verifyRemark()" :disabled="!form.wx_remark.trim() || verifying" class="px-3 py-2 text-xs border rounded font-medium hover:bg-gray-50 disabled:opacity-50" x-text="verifying ? '校验中...' : '试定位'"></button>
           </div>
+          <div x-show="verifyResult === 'pass'" class="text-xs text-green-600 mt-1" x-cloak>通过 — 头部名称: <span x-text="verifyHeaderName"></span></div>
+          <div x-show="verifyResult === 'fail'" class="text-xs text-red-600 mt-1" x-cloak>未通过 — <span x-text="verifyFailReason"></span></div>
+          <div x-show="verifyResult === 'untested'" class="text-xs text-gray-400 mt-1" x-cloak>未测试</div>
         </div>
 
         <div class="mb-4">

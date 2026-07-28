@@ -56,7 +56,6 @@ def test_due_task_generates_mock_artifacts_and_manifest(settings):
         settings.db_path,
         task_id=task_id,
         wx_remark="测试好友",
-        return_code="R-1",
         send_codes=[code],
         countdown_days=1,
         created_at=(now - timedelta(days=1)).isoformat(),
@@ -92,7 +91,7 @@ def test_only_one_worker_can_claim_a_pending_task(settings):
     task_id = uuid4().hex
     now = datetime.now(timezone.utc)
     create_dispatch_task(
-        settings.db_path, task_id, "测试好友", "", ["unused"], 1,
+        settings.db_path, task_id, "测试好友", ["unused"], 1,
         now.isoformat(), now.isoformat(),
     )
 
@@ -105,7 +104,7 @@ def test_startup_recovery_returns_orphaned_generation_to_pending(settings):
     task_id = uuid4().hex
     now = datetime.now(timezone.utc)
     create_dispatch_task(
-        settings.db_path, task_id, "测试好友", "", ["unused"], 1,
+        settings.db_path, task_id, "测试好友", ["unused"], 1,
         now.isoformat(), now.isoformat(),
     )
     assert claim_dispatch_task(settings.db_path, task_id, now.isoformat())
@@ -123,7 +122,7 @@ def test_failed_generation_removes_stale_final_and_staging_directories(settings,
     now = datetime.now(timezone.utc)
     task_id = uuid4().hex
     create_dispatch_task(
-        settings.db_path, task_id, "测试好友", "", [code], 1,
+        settings.db_path, task_id, "测试好友", [code], 1,
         now.isoformat(), now.isoformat(),
     )
     dispatch_root = settings.storage_root / "dispatch"
@@ -153,7 +152,7 @@ def test_dispatch_defaults_to_mock_even_when_workbench_uses_a_real_provider(sett
     now = datetime.now(timezone.utc)
     task_id = uuid4().hex
     create_dispatch_task(
-        settings.db_path, task_id, "测试好友", "", [code], 1,
+        settings.db_path, task_id, "测试好友", [code], 1,
         now.isoformat(), now.isoformat(),
     )
 
@@ -170,7 +169,7 @@ def test_reserved_code_is_encoded_for_its_dispatch_directory(settings):
     now = datetime.now(timezone.utc)
     task_id = uuid4().hex
     create_dispatch_task(
-        settings.db_path, task_id, "测试好友", "", [code], 1,
+        settings.db_path, task_id, "测试好友", [code], 1,
         now.isoformat(), now.isoformat(),
     )
 

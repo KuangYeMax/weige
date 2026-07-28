@@ -23,7 +23,7 @@ def pending_task(settings):
     now = datetime.now(timezone.utc)
     create_dispatch_task(
         db_path=db, task_id=task_id, wx_remark="测试好友",
-        return_code="", send_codes=["CODE1"],
+        send_codes=["CODE1"],
         countdown_days=3, created_at=now.isoformat(),
         trigger_at=(now + timedelta(days=3)).isoformat(),
     )

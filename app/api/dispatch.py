@@ -105,7 +105,6 @@ def create_dispatch_router() -> APIRouter:
             db_path=db_path,
             task_id=task_id,
             wx_remark=wx_remark,
-            return_code=body.return_code.strip(),
             send_codes=codes,
             countdown_days=body.countdown_days,
             created_at=now.isoformat(),

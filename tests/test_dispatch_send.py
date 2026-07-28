@@ -40,7 +40,7 @@ def verified_chat_preflight(monkeypatch):
 def _ready_task(db_path, task_id: str) -> None:
     init_db(db_path)
     now = datetime.now(timezone.utc)
-    create_dispatch_task(db_path, task_id, "测试好友", "", ["code1"], 1, now.isoformat(), now.isoformat())
+    create_dispatch_task(db_path, task_id, "测试好友", ["code1"], 1, now.isoformat(), now.isoformat())
     import app.services.db as db
     conn = db._connect(db_path)
     conn.execute("UPDATE dispatch_tasks SET status='ready' WHERE task_id=?", (task_id,))
@@ -99,7 +99,7 @@ def test_claim_sending_rejects_non_ready(settings):
     task_id = uuid4().hex
     init_db(settings.db_path)
     now = datetime.now(timezone.utc)
-    create_dispatch_task(settings.db_path, task_id, "测试", "", ["c"], 1, now.isoformat(), now.isoformat())
+    create_dispatch_task(settings.db_path, task_id, "测试", ["c"], 1, now.isoformat(), now.isoformat())
     assert claim_dispatch_task_sending(settings.db_path, task_id) is False
 
 
@@ -340,7 +340,7 @@ def test_list_ready_excludes_other_statuses(settings):
     now = datetime.now(timezone.utc)
     t1, t2 = uuid4().hex, uuid4().hex
     for tid in [t1, t2]:
-        create_dispatch_task(settings.db_path, tid, "测试", "", ["c"], 1, now.isoformat(), now.isoformat())
+        create_dispatch_task(settings.db_path, tid, "测试", ["c"], 1, now.isoformat(), now.isoformat())
     import app.services.db as db
     conn = db._connect(settings.db_path)
     conn.execute("UPDATE dispatch_tasks SET status='ready' WHERE task_id=?", (t1,))

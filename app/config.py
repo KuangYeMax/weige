@@ -116,6 +116,9 @@ class Settings(BaseSettings):
     wechat_send_interval_min: float = 1.0
     wechat_send_interval_max: float = 3.0
 
+    # ── 开场语：待发任务触发发送时，最先发给客户的一段话；留空则不发 ──
+    wechat_opening_text: str = ""
+
     # ── 测试专用：sender 覆盖，PrivateAttr 不参与 env 解析 ──
     _test_wechat_sender_override: str = PrivateAttr(default="real")
 

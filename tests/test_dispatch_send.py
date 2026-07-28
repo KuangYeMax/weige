@@ -459,10 +459,55 @@ def test_process_send_does_not_retry_uncertain_code_after_recovery(settings, mon
     )
 
     assert process_send_tasks(settings) == 0
-    assert attempts == ["code1", "code2"]
+    assert attempts == ["code1", "--------------", "code2"]
     assert list_dispatch_tasks(settings.db_path)[0]["status"] == "needs_review"
     final_manifest = json.loads((task_dir / "manifest.json").read_text(encoding="utf-8"))
     assert [result["status"] for result in final_manifest["results"]] == ["local_submitted", "submission_uncertain"]
+
+
+def test_process_send_emits_opening_then_image_text_with_separator(settings, monkeypatch):
+    """开场语在最前、每组为图片+文字、组间用分隔符隔开。"""
+    settings.wechat_opening_text = "麻烦你帮我把xxx好评一下"
+    task_id = uuid4().hex
+    _ready_task_with_two_artifacts(settings, task_id)
+    calls = []
+
+    def record_send(**kwargs):
+        calls.append({"text": kwargs["text"], "images": list(kwargs["images"])})
+
+    monkeypatch.setattr("app.services.wechat.sender.send", record_send)
+
+    assert process_send_tasks(settings) == 1
+    assert list_dispatch_tasks(settings.db_path)[0]["status"] == "sent"
+
+    # 顺序：开场语 → code1(图+文) → 分隔符 → code2(图+文)
+    assert [c["text"] for c in calls] == [
+        "麻烦你帮我把xxx好评一下",
+        "code1",
+        "--------------",
+        "code2",
+    ]
+    # 开场语与分隔符不含图片，本组各含一张图片
+    assert calls[0]["images"] == []
+    assert calls[2]["images"] == []
+    assert len(calls[1]["images"]) == 1
+    assert len(calls[3]["images"]) == 1
+
+
+def test_process_send_omits_opening_when_blank(settings, monkeypatch):
+    """开场语留空时不发，单组任务只发一次（图+文）。"""
+    task_id = uuid4().hex
+    _ready_task_with_artifacts(settings, task_id)
+    calls = []
+
+    monkeypatch.setattr(
+        "app.services.wechat.sender.send",
+        lambda **kwargs: calls.append(kwargs["text"]),
+    )
+
+    assert process_send_tasks(settings) == 1
+    assert list_dispatch_tasks(settings.db_path)[0]["status"] == "sent"
+    assert calls == ["好评文案"]
 
 
 def test_process_send_on_non_windows_stays_ready_and_cannot_be_confirmed(settings, monkeypatch):

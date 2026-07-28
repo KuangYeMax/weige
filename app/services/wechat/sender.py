@@ -86,16 +86,6 @@ def send(remark: str, text: str, images: list[str], settings: Settings) -> None:
     hwnd, rect = _prepare_wechat_window()
     _search_and_open(hwnd, rect, remark, settings)
 
-    if text:
-        input_x, input_y = _resolve_input_area(rect, settings)
-        click(rect, input_x - rect[0], input_y - rect[1])
-        time.sleep(0.2)
-        clip_set_text(text)
-        send_key("ctrl,v")
-        time.sleep(0.2)
-        send_key("alt,s")
-        _random_delay(settings)
-
     for p in images:
         if not os.path.isfile(p):
             raise FileNotFoundError(f"发送图片不存在: {p}")
@@ -105,6 +95,16 @@ def send(remark: str, text: str, images: list[str], settings: Settings) -> None:
         clip_set_image(p)
         send_key("ctrl,v")
         time.sleep(1.5)
+        send_key("alt,s")
+        _random_delay(settings)
+
+    if text:
+        input_x, input_y = _resolve_input_area(rect, settings)
+        click(rect, input_x - rect[0], input_y - rect[1])
+        time.sleep(0.2)
+        clip_set_text(text)
+        send_key("ctrl,v")
+        time.sleep(0.2)
         send_key("alt,s")
         _random_delay(settings)
 

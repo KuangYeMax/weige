@@ -39,6 +39,9 @@ logger = logging.getLogger(__name__)
 
 SUBMISSION_UNCERTAIN = "submission_uncertain"
 
+# 多组图片与好评文案之间的分隔符，发给客户以区分不同商品
+SEPARATOR = "--------------"
+
 
 def _safe_child(parent: Path, name: str) -> Path:
     candidate = (parent / name).resolve()
@@ -468,7 +471,7 @@ def _send_ready_task(settings: Settings, task: dict) -> None:
         mark_dispatch_task_sent(settings.db_path, task_id)
         return
 
-    for result, code, text, image_path in send_items:
+    for idx, (result, code, text, image_path) in enumerate(send_items):
         _verify, _send = _resolve_sender(settings)
 
         try:
@@ -510,6 +513,23 @@ def _send_ready_task(settings: Settings, task: dict) -> None:
             return
 
         try:
+            # 前缀消息：第一组前发开场语（若配置），后续组前发分隔符
+            if idx == 0:
+                opening_text = (settings.wechat_opening_text or "").strip()
+                if opening_text:
+                    _send(
+                        remark=task["wx_remark"],
+                        text=opening_text,
+                        images=[],
+                        settings=settings,
+                    )
+            else:
+                _send(
+                    remark=task["wx_remark"],
+                    text=SEPARATOR,
+                    images=[],
+                    settings=settings,
+                )
             _send(
                 remark=task["wx_remark"],
                 text=text,

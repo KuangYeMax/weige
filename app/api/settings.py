@@ -12,6 +12,7 @@ class SettingsUpdate(BaseModel):
     random_interval_min: float | None = None
     random_interval_max: float | None = None
     dispatch_provider: str | None = None
+    wechat_opening_text: str | None = None
 
 
 class ApiKeysUpdate(BaseModel):
@@ -31,6 +32,7 @@ def _public_settings(s: Settings) -> dict:
         "dispatch_poll_seconds": s.dispatch_poll_seconds,
         "wechat_send_interval_min": s.wechat_send_interval_min,
         "wechat_send_interval_max": s.wechat_send_interval_max,
+        "wechat_opening_text": s.wechat_opening_text,
         "wechat_search_bar_x": s.wechat_search_bar_x,
         "wechat_search_bar_y": s.wechat_search_bar_y,
         "wechat_input_x_offset": s.wechat_input_x_offset,
@@ -66,6 +68,8 @@ def create_settings_router() -> APIRouter:
             s.wechat_send_interval_max = body.random_interval_max
         if body.dispatch_provider is not None:
             s.dispatch_image_provider = body.dispatch_provider
+        if body.wechat_opening_text is not None:
+            s.wechat_opening_text = body.wechat_opening_text
         return _public_settings(s)
 
     @router.put("/api-keys")

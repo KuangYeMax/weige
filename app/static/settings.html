@@ -78,6 +78,16 @@
             <div x-show="saveMsg" class="text-xs mt-2" :class="saveMsg.startsWith('错') ? 'text-red-600' : 'text-green-600'" x-text="saveMsg" x-cloak></div>
           </section>
 
+          <!-- 开场语 -->
+          <section class="bg-white rounded-lg shadow p-6">
+            <h2 class="font-bold text-lg mb-4">开场语</h2>
+            <p class="text-xs text-gray-500 mb-4">待发任务触发发送时，会先把这段话发给客户，再依次发图片、好评文字。留空则不发。整个任务只发一次。</p>
+            <textarea x-model="opening.wechat_opening_text" rows="3" placeholder="例如：麻烦你帮我把xxx好评一下" class="w-full border rounded px-3 py-2 text-sm"></textarea>
+            <p class="text-xs text-gray-400 mt-2">提示：多组图片与好评文案之间会自动用 <code class="bg-gray-100 px-1 rounded">--------------</code> 分隔，避免客户搞混。</p>
+            <button @click="saveOpening()" :disabled="savingOpening" class="mt-4 px-4 py-2 bg-green-600 text-white rounded text-sm disabled:opacity-50" x-text="savingOpening ? '保存中...' : '保存'"></button>
+            <div x-show="openingMsg" class="text-xs mt-2" :class="openingMsg.startsWith('错') ? 'text-red-600' : 'text-green-600'" x-text="openingMsg" x-cloak></div>
+          </section>
+
           <!-- Read-only configs -->
           <section class="bg-white rounded-lg shadow p-6">
             <h2 class="font-bold text-lg mb-4">只读配置</h2>
@@ -102,16 +112,22 @@
       s: null,
       form: { random_interval_min: 1, random_interval_max: 3, dispatch_provider: '' },
       saving: false, saveMsg: '',
+      opening: { wechat_opening_text: '' },
+      savingOpening: false, openingMsg: '',
       apiKeys: { ark_api_key: '', deepseek_api_key: '', dashscope_api_key: '' },
       savingKeys: false, keyMsg: '',
-      async init() { await this.load(); setInterval(() => this.load(), 5000); },
-      async load() {
+      async init() { await this.load(true); setInterval(() => this.load(false), 5000); },
+      async load(sync_edit_fields = true) {
         try {
           const sr = await fetch('/api/settings');
           this.s = await sr.json();
-          this.form.random_interval_min = this.s.wechat_send_interval_min;
-          this.form.random_interval_max = this.s.wechat_send_interval_max;
-          this.form.dispatch_provider = this.s.dispatch_image_provider;
+          // 仅在首次加载与保存成功后同步编辑态；定时刷新只更新只读状态，避免覆盖用户正在输入的内容
+          if (sync_edit_fields) {
+            this.form.random_interval_min = this.s.wechat_send_interval_min;
+            this.form.random_interval_max = this.s.wechat_send_interval_max;
+            this.form.dispatch_provider = this.s.dispatch_image_provider;
+            this.opening.wechat_opening_text = this.s.wechat_opening_text || '';
+          }
         } catch {}
       },
       async saveSettings() {
@@ -122,6 +138,15 @@
           else { const e = await res.json(); this.saveMsg = '错误: ' + (e.error?.message || '失败'); }
         } catch { this.saveMsg = '错误: 网络异常'; }
         finally { this.saving = false; }
+      },
+      async saveOpening() {
+        this.savingOpening = true; this.openingMsg = '';
+        try {
+          const res = await fetch('/api/settings', { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ wechat_opening_text: this.opening.wechat_opening_text }) });
+          if (res.ok) { this.openingMsg = '已保存'; await this.load(); }
+          else { const e = await res.json(); this.openingMsg = '错误: ' + (e.error?.message || '失败'); }
+        } catch { this.openingMsg = '错误: 网络异常'; }
+        finally { this.savingOpening = false; }
       },
       async saveApiKeys() {
         this.savingKeys = true; this.keyMsg = '';

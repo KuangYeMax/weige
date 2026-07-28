@@ -72,14 +72,17 @@
             <template x-if="product.fact_card">
               <div>
                 <div class="grid grid-cols-2 md:grid-cols-3 gap-3 mb-4">
-                  <div class="p-3 border rounded"><div class="text-xs text-gray-500">商品名称</div><input x-model="factCard['商品名称']" class="w-full text-sm font-medium border-0 p-0 focus:ring-0 bg-transparent"></div>
-                  <div class="p-3 border rounded"><div class="text-xs text-gray-500">品类</div><input x-model="factCard['商品品类']" class="w-full text-sm font-medium border-0 p-0 focus:ring-0 bg-transparent"></div>
-                  <div class="p-3 border rounded"><div class="text-xs text-gray-500">置信度</div><input x-model="factCard['识别置信度']" class="w-full text-sm font-medium border-0 p-0 focus:ring-0 bg-transparent"></div>
-                  <div class="p-3 border rounded col-span-2 md:col-span-3"><div class="text-xs text-gray-500">整体特征</div><textarea x-model="factCard['整体特征']" class="w-full text-sm border-0 p-0 focus:ring-0 bg-transparent resize-none" rows="2"></textarea></div>
+                  <div class="p-3 border rounded"><div class="text-xs text-gray-500">商品名称</div><input x-model="factCard['商品名称']" @input="syncFactJson()" class="w-full text-sm font-medium border-0 p-0 focus:ring-0 bg-transparent"></div>
+                  <div class="p-3 border rounded"><div class="text-xs text-gray-500">品类</div><input x-model="factCard['商品品类']" @input="syncFactJson()" class="w-full text-sm font-medium border-0 p-0 focus:ring-0 bg-transparent"></div>
+                  <div class="p-3 border rounded"><div class="text-xs text-gray-500">置信度</div><input x-model="factCard['识别置信度']" @input="syncFactJson()" class="w-full text-sm font-medium border-0 p-0 focus:ring-0 bg-transparent"></div>
+                  <div class="p-3 border rounded"><div class="text-xs text-gray-500">主体名称</div><input x-model="factCard['主体名称']" @input="syncFactJson()" placeholder="如：马/牛/花瓶" class="w-full text-sm font-medium border-0 p-0 focus:ring-0 bg-transparent"></div>
+                  <div class="p-3 border rounded"><div class="text-xs text-gray-500">主体数量</div><input type="number" x-model="factCard['主体数量']" @input="syncFactJson()" placeholder="数不清留空" class="w-full text-sm font-medium border-0 p-0 focus:ring-0 bg-transparent"></div>
+                  <div class="p-3 border rounded flex items-center gap-2"><input type="checkbox" x-model="factCard['主体数量待确认']" @change="syncFactJson()" class="rounded mt-1"><div><div class="text-xs text-gray-500">数量待确认</div><div class="text-xs text-gray-400">回填值，核对后取消勾选</div></div></div>
+                  <div class="p-3 border rounded col-span-2 md:col-span-3"><div class="text-xs text-gray-500">整体特征</div><textarea x-model="factCard['整体特征']" @input="syncFactJson()" class="w-full text-sm border-0 p-0 focus:ring-0 bg-transparent resize-none" rows="2"></textarea></div>
                 </div>
                 <details class="mb-3">
                   <summary class="cursor-pointer text-sm text-blue-600">完整 JSON 编辑</summary>
-                  <textarea x-model="factJson" class="w-full mt-2 text-xs font-mono border rounded p-3 h-48 resize-y"></textarea>
+                  <textarea x-model="factJson" @input="syncCardFromJson()" class="w-full mt-2 text-xs font-mono border rounded p-3 h-48 resize-y"></textarea>
                 </details>
                 <div class="flex gap-2">
                   <button @click="saveFactCard()" :disabled="savingFact" class="bg-green-600 text-white px-4 py-2 text-sm rounded disabled:opacity-50" x-text="savingFact ? '保存中...' : '保存事实卡'"></button>
@@ -152,6 +155,24 @@
           this.factCard = card;
         } catch { this.factError = '网络错误'; }
         finally { this.savingFact = false; }
+      },
+      // 表单字段改动即时同步到完整 JSON 编辑框（保存以 factJson 为准）。
+      // 同时把「主体数量」规整为 number 或 null，避免空串/非数字混入。
+      syncFactJson() {
+        const card = JSON.parse(JSON.stringify(this.factCard));
+        let c = card['主体数量'];
+        if (c === '' || c === null || c === undefined) {
+          card['主体数量'] = null;
+        } else {
+          c = Number(c);
+          card['主体数量'] = isNaN(c) ? null : c;
+        }
+        this.factCard['主体数量'] = card['主体数量'];
+        this.factJson = JSON.stringify(card, null, 2);
+      },
+      // 反向：完整 JSON 编辑框改动同步回表单对象（合法时）。
+      syncCardFromJson() {
+        try { this.factCard = JSON.parse(this.factJson); } catch (e) {}
       },
     };
   }

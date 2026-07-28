@@ -274,18 +274,36 @@ def prepare_generation(
     fact_card: FactCard,
     shot_type: str,
     scene: Scene,
+    camera_seed: int | None = None,
+    realism_seed: int | None = None,
+    count_emphasis: str = "",
 ) -> PreparedGeneration:
-    """Shared prompt assembly + preprocessing for both single-generate and compare."""
+    """Shared prompt assembly + preprocessing for both single-generate and compare.
+
+    随机源显式化：camera_seed（角度/构图机位）与 realism_seed（真实感上下文）
+    均可由调用方传入，从而在阶梯降级重试里做到「第二档保持角度/氛围不变、
+    只换生图种子」。不传时回退到全局随机，保持 workbench/regen 原有行为。
+    count_emphasis 若非空，作为独立约束句追加到 prompt 末尾（第三、四档用）。
+    """
     realism_ctx = None
     if settings.realism_pool:
-        seed = settings.realism_seed if settings.realism_seed is not None else random.randint(0, 2**31 - 1)
-        realism_ctx = draw_realism_context(seed, shot_type)
-    camera_seed = random.randint(0, 2**31 - 1)
+        if realism_seed is not None:
+            rseed = realism_seed
+        elif settings.realism_seed is not None:
+            rseed = settings.realism_seed
+        else:
+            rseed = random.randint(0, 2**31 - 1)
+        realism_ctx = draw_realism_context(rseed, shot_type)
+    if camera_seed is None:
+        camera_seed = random.randint(0, 2**31 - 1)
     product_brief, prompt, camera_pos = render_generation_prompt(
         PROMPT_PATH.read_text(encoding="utf-8"), fact_card, scene, shot_type, realism_ctx,
         camera_seed=camera_seed,
         inject_appearance=settings.inject_appearance_into_image_prompt,
     )
+    # 数量强调作为独立硬约束追加到 prompt（不与 product_brief 混写，便于日志区分）。
+    if count_emphasis:
+        prompt = prompt.rstrip() + "\n" + count_emphasis
 
     effective_reference = reference_path
     preprocessed_tmp: Path | None = None
@@ -321,11 +339,18 @@ def run_provider_generation(
     size: str,
     model_id: str | None,
     used_reference: bool,
+    gen_seed: int | None = None,
 ):
-    """Serialize every provider call, including workbench comparison calls."""
+    """Serialize every provider call, including workbench comparison calls.
+
+    gen_seed 仅 bailian 支持（万相 wan2.7 生图种子，主导主体保真）；
+    其他 provider 忽略，保持各自原有行为。
+    """
     with _GENERATION_LOCK:
         if provider_name == "bailian":
-            return provider.generate(reference_path if used_reference else None, prompt, size)
+            return provider.generate(
+                reference_path if used_reference else None, prompt, size, seed=gen_seed
+            )
         if provider_name == "volcengine":
             return provider.generate(reference_path, prompt, size, model_id=model_id)
         return provider.generate(reference_path, prompt, size)
@@ -343,6 +368,10 @@ def generate_image(
     model_id: str | None = None,
     output_dir: Path | None = None,
     scene_override: Scene | None = None,
+    camera_seed: int | None = None,
+    realism_seed: int | None = None,
+    gen_seed: int | None = None,
+    count_emphasis: str = "",
     provider_factory: Callable[[Settings, str | None, str | None, Path | None], tuple[object, str]] = create_image_provider,
 ) -> GeneratedImage:
     requested_provider = provider_name
@@ -364,6 +393,9 @@ def generate_image(
         fact_card=fact_card,
         shot_type=shot_type,
         scene=scene,
+        camera_seed=camera_seed,
+        realism_seed=realism_seed,
+        count_emphasis=count_emphasis,
     )
     product_brief = prep.product_brief
     prompt = prep.prompt
@@ -391,6 +423,7 @@ def generate_image(
             size,
             requested_model,
             used_reference,
+            gen_seed=gen_seed,
         )
     finally:
         if preprocessed_tmp:

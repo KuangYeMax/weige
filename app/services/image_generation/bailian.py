@@ -210,13 +210,16 @@ class BailianImageProvider:
         reference_image_path: Path | None,
         prompt: str,
         size: str,
+        seed: int | None = None,
     ) -> GenerationResult:
         if not self.api_key:
             raise AppError("BAILIAN_NOT_CONFIGURED", "百炼生图服务尚未配置 API Key", 503)
 
         model_info = get_model(self.model)
         aspect_size = _map_size(size) if "*" not in size else size
-        seed = random.randint(0, 2**31 - 1)
+        # 支持外部传入可复现 seed（阶梯降级第二档「只换种子」依赖此参数）；
+        # 不传则内部随机，保持向后兼容。
+        seed = seed if seed is not None else random.randint(0, 2**31 - 1)
 
         used_reference = False
         if self.model == "wan2.5-i2i-preview":

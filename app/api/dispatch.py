@@ -389,7 +389,7 @@ def _regenerate_image_only(settings: Settings, task_id: str, task: dict, code: s
         fact_card=fact_card,
         shot_type=shot_type,
         scene_index=scene_index,
-        aspect_ratio="1:1",
+        aspect_ratio="3:4",
         provider_name=settings.dispatch_image_provider,
         model_id=settings.dispatch_image_model,
         output_dir=code_dir,

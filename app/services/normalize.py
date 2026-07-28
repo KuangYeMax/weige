@@ -26,6 +26,11 @@ _OBJECT_FIELDS = {"尺寸", "建议拍法"}
 
 _NUMERIC_FIELDS = {"长_cm", "宽_cm", "高_cm", "重量_kg"}
 
+# 顶层结构化主体数量字段：模型可能返回 int / float / "5" / "无法确认" 等，
+# 统一规整为 int 或 None，避免文本解析静默跳过的坑。
+_SUBJECT_COUNT_FIELD = "主体数量"
+_SUBJECT_COUNT_UNCONFIRMED_FIELD = "主体数量待确认"
+
 
 def _strip_code_fences(text: str) -> str:
     text = text.strip()
@@ -68,6 +73,30 @@ def _try_parse_numeric(value: Any) -> float | None:
     return None
 
 
+def _try_parse_int(value: Any) -> int | None:
+    """规整主体数量：数字或数字字符串转 int，其余返回 None。"""
+    num = _try_parse_numeric(value)
+    if num is None:
+        return None
+    return int(num)
+
+
+def _try_parse_bool(value: Any) -> bool | None:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    if isinstance(value, str):
+        v = value.strip().lower()
+        if v in ("true", "1", "yes", "是", "待确认", "y"):
+            return True
+        if v in ("false", "0", "no", "否", "", "n"):
+            return False
+    return None
+
+
 def _normalize_array(value: Any) -> list:
     if value is None:
         return []
@@ -104,5 +133,14 @@ def normalize_fact_card(raw: str) -> dict:
                 dims[nf] = _try_parse_numeric(dims[nf])
         if "其他规格" in dims:
             dims["其他规格"] = _normalize_array(dims["其他规格"])
+
+    # 主体数量结构化规整：模型若返回 "5" / 5.0 / "无法确认" 等统一成 int|None，
+    # 避免下游靠文本解析静默跳过（用户明确要求结构化字段，不靠自然语言解析）。
+    if _SUBJECT_COUNT_FIELD in data:
+        data[_SUBJECT_COUNT_FIELD] = _try_parse_int(data[_SUBJECT_COUNT_FIELD])
+    if _SUBJECT_COUNT_UNCONFIRMED_FIELD in data:
+        data[_SUBJECT_COUNT_UNCONFIRMED_FIELD] = _try_parse_bool(
+            data[_SUBJECT_COUNT_UNCONFIRMED_FIELD]
+        )
 
     return data

@@ -32,6 +32,7 @@ from app.services.db import (
 from app.services.fact_card import ensure_fact_card
 from app.services.dispatch_generation import generate_content, generate_image
 from app.services.consistency_check import check_consistency
+from app.services.count_hard_check import check_count
 from app.services.wechat.uia import ChatVerificationError, UIAutomationUnavailableError
 from app.services.wechat.win32 import ClipboardVerificationError
 
@@ -42,6 +43,35 @@ SUBMISSION_UNCERTAIN = "submission_uncertain"
 
 # 多组图片与好评文案之间的分隔符，发给客户以区分不同商品
 SEPARATOR = "--------------"
+
+# 第四档保底用的极简背景选项。措辞可在此手工调整：背景越简单，模型注意力越集中
+# 于主体，保真度越高、氛围感越弱。第四档从中随机选一个，宁可平淡也要保真。
+# 单独抽出方便后续调措辞，无需改动重试主逻辑。
+MINIMAL_SCENE_OPTIONS: list[str] = [
+    "纯白无缝背景台面",
+    "浅灰纯色背景台面",
+    "浅景深虚化的干净桌面",
+    "原木色台面极简特写",
+]
+
+
+def _effective_subject(fact_card: FactCard) -> tuple[int | None, str]:
+    """返回 (有效主体数量, 主体名称)。
+
+    数量为 None，或被标记为「主体数量待确认」（回填脚本写入、未经人工核对）时，
+    一律视为无数量——第三、四档自动跳过数量强调，数量硬校验也跳过。这正是
+    「不靠文本解析、不静默生效」的结构化保证。主体名称回退到主体定义/商品名。
+    """
+    count = fact_card.subject_count
+    if fact_card.subject_count_unconfirmed:
+        count = None
+    name = (
+        fact_card.subject_name
+        or fact_card.subject_definition
+        or fact_card.product_name
+        or "商品主体"
+    )
+    return count, name
 
 
 def _safe_child(parent: Path, name: str) -> Path:
@@ -159,19 +189,78 @@ def _process_claimed_task(settings: Settings, task: dict) -> None:
             scene_sampler = SceneSampler(fact_card.scenes or [], task_rng)
             scene = scene_sampler.draw()
             shot_type = task_rng.choice(["中近景", "细节照"])
+            # 角度/构图随机源显式化（从 task_rng 派生，可控可保持可记录）：
+            #   camera_seed  → draw_camera_position 的机位/俯仰/水平偏移（即「角度」随机源）
+            #   realism_seed → 真实感上下文（环境氛围）
+            # 第二档保持二者不变、只换生图种子，靠这两个 seed 复用实现。
+            camera_seed = task_rng.randrange(2**31)
+            realism_seed = task_rng.randrange(2**31)
             ref_path = _reference_path(settings, product)
 
-            # Generate with consistency check + retry
-            max_attempts = 1 + settings.consistency_check_max_retries
+            # 阶梯式降级重试（可一键关闭退回原行为）。
+            degraded = settings.degraded_retry_enabled
+            if degraded:
+                max_attempts = max(1, settings.degraded_retry_max_attempts)
+            else:
+                max_attempts = 1 + settings.consistency_check_max_retries
+
+            effective_count, subject_name = _effective_subject(fact_card)
+
             generated = None
             consistency_passed = False
             fail_reasons: list[str] = []
+            attempts_log: list[dict] = []
+            rescued_level: int | None = None
+
             for attempt in range(max_attempts):
-                if attempt > 0:
-                    scene = scene_sampler.draw()
-                    shot_type = task_rng.choice(["中近景", "细节照"])
-                generated = generate_image(
-                    settings,
+                level = attempt + 1
+                # 生图种子每次都新生成；第二档「只换生图种子」即靠此推进实现，
+                # 其余随机源是否变化由下面的分档逻辑决定。
+                gen_seed = task_rng.randrange(2**31)
+
+                if degraded:
+                    if level == 1:
+                        # 正常档：scene/景别/角度/氛围已在循环外选好。
+                        pass
+                    elif level == 2:
+                        # 只换生图种子：scene/景别/角度/氛围原样保持，单变量排查运气。
+                        pass
+                    elif level == 3:
+                        # 数量强调 + 场景重新随机（景别/角度随之重抽，换组合排查场景不友好）。
+                        scene = scene_sampler.draw()
+                        shot_type = task_rng.choice(["中近景", "细节照"])
+                        camera_seed = task_rng.randrange(2**31)
+                        realism_seed = task_rng.randrange(2**31)
+                    else:
+                        # 保底档：数量强调 + 景别强制中近景 + 场景强制极简背景。
+                        shot_type = "中近景"
+                        scene = Scene(
+                            scene=task_rng.choice(MINIMAL_SCENE_OPTIONS),
+                            placement="极简台面特写",
+                        )
+                        camera_seed = task_rng.randrange(2**31)
+                        realism_seed = task_rng.randrange(2**31)
+                else:
+                    # 关闭阶梯降级：退回原行为，重试时重抽 scene/shot_type。
+                    if attempt > 0:
+                        scene = scene_sampler.draw()
+                        shot_type = task_rng.choice(["中近景", "细节照"])
+
+                # 数量强调句（第三档起生效，受独立开关与有效数量双重控制；数量为空则跳过）。
+                count_emphasis = ""
+                if (
+                    degraded
+                    and settings.degraded_retry_count_emphasis
+                    and level >= 3
+                    and effective_count is not None
+                ):
+                    count_emphasis = (
+                        f"数量约束：画面中{subject_name}的数量必须恰好是{effective_count}个，"
+                        f"不多不少，不得增加或减少。"
+                    )
+
+                gen_kwargs = dict(
+                    settings=settings,
                     reference_path=ref_path,
                     fact_card=fact_card,
                     shot_type=shot_type,
@@ -182,17 +271,64 @@ def _process_claimed_task(settings: Settings, task: dict) -> None:
                     model_id=settings.dispatch_image_model,
                     output_dir=code_dir,
                 )
+                if degraded:
+                    # 阶梯模式：贯通显式随机源与数量强调到生成链路。
+                    gen_kwargs.update(
+                        camera_seed=camera_seed,
+                        realism_seed=realism_seed,
+                        gen_seed=gen_seed,
+                        count_emphasis=count_emphasis,
+                    )
+                generated = generate_image(**gen_kwargs)
+
                 check_image = generated.graded_path or generated.output_path
                 check_result = check_consistency(settings, ref_path, check_image)
-                if check_result.consistent:
+
+                # 数量硬校验（独立开关 + 有效数量双控；为空/关闭时 hard_check 留 None 表示未执行）。
+                hard_check: bool | None = None
+                if (
+                    degraded
+                    and settings.count_hard_check_enabled
+                    and effective_count is not None
+                ):
+                    hard_check = check_count(
+                        settings, check_image, subject_name, effective_count
+                    ).passed
+
+                passed = check_result.consistent and (hard_check is None or hard_check)
+
+                attempts_log.append({
+                    "level": level,
+                    "scene": scene.scene,
+                    "placement": scene.placement,
+                    "shot_type": shot_type,
+                    "camera_pos": generated.camera_pos,
+                    "seed": generated.seed,
+                    "consistent": check_result.consistent,
+                    "hard_check": hard_check,
+                    "count_emphasis": bool(count_emphasis),
+                    "reasons": check_result.reasons,
+                })
+
+                if passed:
                     consistency_passed = True
+                    rescued_level = level
                     break
-                fail_reasons = check_result.reasons
+
+                if not check_result.consistent:
+                    fail_reasons = check_result.reasons
+                elif hard_check is False:
+                    fail_reasons = ["COUNT_HARD_CHECK_FAILED"]
+                else:
+                    fail_reasons = check_result.reasons
+
                 logger.warning(
-                    "dispatch task=%s code=%s consistency failed attempt=%d reasons=%s",
-                    task_id, code, attempt + 1, fail_reasons,
+                    "dispatch task=%s code=%s attempt=%d/%d level=%d failed "
+                    "consistent=%s hard_check=%s reasons=%s",
+                    task_id, code, attempt + 1, max_attempts, level,
+                    check_result.consistent, hard_check, fail_reasons,
                 )
-                # Clean up failed attempt outputs for retry
+                # 清理失败尝试产物（最后一次保留，供 needs_review 人工查看）。
                 if attempt < max_attempts - 1:
                     if generated.graded_path:
                         generated.graded_path.unlink(missing_ok=True)
@@ -218,6 +354,8 @@ def _process_claimed_task(settings: Settings, task: dict) -> None:
                     "content_path": f"{_code_directory_name(code)}/content.txt",
                     "content_source": content_result.status,
                     "reason": f"CONSISTENCY_FAILED: {'; '.join(fail_reasons)}",
+                    "attempts": attempts_log,
+                    "rescued_level": None,
                 })
                 active_code = None
                 continue
@@ -287,6 +425,8 @@ def _process_claimed_task(settings: Settings, task: dict) -> None:
                     "has_minor_flaw": content_result.has_minor_flaw,
                     "review_model": content_result.model,
                 },
+                "attempts": attempts_log,
+                "rescued_level": rescued_level,
             })
             active_code = None
             logger.info(

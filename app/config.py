@@ -67,6 +67,18 @@ class Settings(BaseSettings):
     consistency_check_model: str = ""
     consistency_check_max_retries: int = 1
 
+    # ── 阶梯式降级重试 ──
+    # 总开关关闭时退回原行为（max_attempts = 1 + consistency_check_max_retries，
+    # 重试时重抽 scene/shot_type），便于新旧策略 A/B 对比。
+    degraded_retry_enabled: bool = True
+    # 降级重试最大尝试档数（1=仅正常随机，2=加换种子，3=加数量强调，4=加极简保底）。
+    degraded_retry_max_attempts: int = 4
+    # 数量强调句独立开关：第三、四档是否向 prompt 注入「主体数量必须为 N」。
+    degraded_retry_count_emphasis: bool = True
+    # 数量硬校验独立开关：校验通过后额外问视觉模型「图里有几个主体」，与事实卡数量做相等判定。
+    # 默认关闭，需先积累结构化数量字段后再开。
+    count_hard_check_enabled: bool = False
+
     # ── 好评文案 ──
     review_provider: str = "ark"
     ark_review_base_url: str = ""

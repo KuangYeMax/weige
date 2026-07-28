@@ -24,16 +24,17 @@ def call_ark(
     settings: Settings,
     temperature: float | None = None,
     max_tokens: int = 500,
+    model: str | None = None,
 ) -> str:
     api_key = settings.ark_api_key
     if not api_key:
         raise AppError("ARK_KEY_MISSING", "火山方舟 API key 未配置", 503)
 
     base_url = _resolve_url(settings)
-    model = _resolve_model(settings)
+    effective_model = model or _resolve_model(settings)
 
     payload = {
-        "model": model,
+        "model": effective_model,
         "messages": messages,
         "temperature": temperature if temperature is not None else settings.review_temperature,
         "max_tokens": max_tokens,

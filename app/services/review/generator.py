@@ -74,6 +74,7 @@ def _generate_one(
     card: FactCard,
     settings: Settings,
     variety_params: dict | None = None,
+    model: str | None = None,
 ) -> str:
     if variety_params:
         style = variety_params["style"]
@@ -121,7 +122,7 @@ def _generate_one(
     ]
 
     temperature = round(random.uniform(0.9, 1.1), 2)
-    return call_ark(messages, settings, temperature=temperature)
+    return call_ark(messages, settings, temperature=temperature, model=model)
 
 
 def generate_review(
@@ -129,6 +130,7 @@ def generate_review(
     settings: Settings,
     task_id: str | None = None,
     task_index: int = 0,
+    model: str | None = None,
 ) -> str:
     """Generate a single review with variety parameters driven by task_id + index."""
     max_retries = settings.review_max_retries_on_forbidden
@@ -142,7 +144,7 @@ def generate_review(
     for attempt in range(max_retries + 1):
         try:
             text = normalize_review_text(
-                _generate_one(card, settings, variety_params)
+                _generate_one(card, settings, variety_params, model=model)
             )
         except AppError:
             logger.warning("review attempt %d failed, retrying", attempt + 1)

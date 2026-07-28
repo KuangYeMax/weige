@@ -181,8 +181,8 @@ def create_dispatch_router() -> APIRouter:
         _delete_task(settings, task_id)
         return {"ok": True}
 
-    @router.post("/{task_id}/regenerate/{code}")
-    async def regenerate_dispatch_item(task_id: str, code: str, request: Request):
+    @router.post("/{task_id}/regenerate/{code}/image")
+    async def regenerate_dispatch_image(task_id: str, code: str, request: Request):
         settings = _settings(request)
         task = get_dispatch_task(settings.db_path, task_id)
         if task is None:
@@ -200,7 +200,29 @@ def create_dispatch_router() -> APIRouter:
                 status_code=400,
                 content={"error": {"code": "CODE_NOT_IN_TASK", "message": f"编号 {code} 不在此任务中"}},
             )
-        result = _regenerate_item(settings, task_id, task, code)
+        result = _regenerate_image_only(settings, task_id, task, code)
+        return result
+
+    @router.post("/{task_id}/regenerate/{code}/content")
+    async def regenerate_dispatch_content(task_id: str, code: str, request: Request):
+        settings = _settings(request)
+        task = get_dispatch_task(settings.db_path, task_id)
+        if task is None:
+            return JSONResponse(
+                status_code=404,
+                content={"error": {"code": "DISPATCH_TASK_NOT_FOUND", "message": "发送任务不存在"}},
+            )
+        if task["status"] not in ("ready", "pending", "needs_review", "failed"):
+            return JSONResponse(
+                status_code=409,
+                content={"error": {"code": "REGENERATE_NOT_ALLOWED", "message": "当前状态不支持重新生成"}},
+            )
+        if code not in task["send_codes"]:
+            return JSONResponse(
+                status_code=400,
+                content={"error": {"code": "CODE_NOT_IN_TASK", "message": f"编号 {code} 不在此任务中"}},
+            )
+        result = _regenerate_content_only(settings, task_id, task, code)
         return result
 
     @router.post("/{task_id}/reschedule", response_model=DispatchTaskOut)
@@ -332,13 +354,12 @@ def _delete_task(settings: Settings, task_id: str) -> None:
         shutil.rmtree(task_dir, ignore_errors=True)
 
 
-def _regenerate_item(settings: Settings, task_id: str, task: dict, code: str) -> dict:
+def _regenerate_image_only(settings: Settings, task_id: str, task: dict, code: str) -> dict:
     import os
     import random as rng
 
     from app.services.db import lookup_product_by_code
     from app.services.dispatch_generation import generate_image
-    from app.services.review.generator import generate_review
 
     product = lookup_product_by_code(settings.db_path, code)
     if product is None:
@@ -383,11 +404,6 @@ def _regenerate_item(settings: Settings, task_id: str, task: dict, code: str) ->
     if generated.output_path.exists() and generated.output_path != selected_image and generated.output_path != image_path:
         generated.output_path.unlink(missing_ok=True)
 
-    task_index = task["send_codes"].index(code)
-    review_text = generate_review(fact_card, settings, task_id=task_id, task_index=task_index)
-    content_path = code_dir / "content.txt"
-    content_path.write_text(review_text, encoding="utf-8")
-
     manifest_path = task_dir / "manifest.json"
     manifest = {}
     if manifest_path.is_file():
@@ -401,7 +417,6 @@ def _regenerate_item(settings: Settings, task_id: str, task: dict, code: str) ->
     for r in results:
         if r.get("code") == code:
             r["image_path"] = f"{directory_name}/{image_path.name}"
-            r["content_path"] = f"{directory_name}/content.txt"
             r["status"] = "ok"
             r["provider"] = generated.provider
             r["model"] = generated.model
@@ -421,7 +436,6 @@ def _regenerate_item(settings: Settings, task_id: str, task: dict, code: str) ->
             "provider": generated.provider,
             "model": generated.model,
             "image_path": f"{directory_name}/{image_path.name}",
-            "content_path": f"{directory_name}/content.txt",
             "prompt": generated.prompt,
             "seed": generated.seed,
             "size": generated.size,
@@ -437,6 +451,60 @@ def _regenerate_item(settings: Settings, task_id: str, task: dict, code: str) ->
     return {
         "code": code,
         "image_url": f"/storage/dispatch/{task_id}/{directory_name}/{image_path.name}",
+    }
+
+
+def _regenerate_content_only(settings: Settings, task_id: str, task: dict, code: str) -> dict:
+    from app.services.db import lookup_product_by_code
+    from app.services.review.generator import generate_review
+
+    product = lookup_product_by_code(settings.db_path, code)
+    if product is None:
+        return {"error": {"code": "CODE_NOT_FOUND", "message": f"编号 {code} 未入库"}}
+
+    fact_card = _load_fact_card_for_regen(settings, product)
+
+    dispatch_root = settings.storage_root / "dispatch"
+    task_dir = dispatch_root / task_id
+    task_dir.mkdir(parents=True, exist_ok=True)
+
+    from app.services.dispatch_scheduler import _code_directory_name
+    directory_name = _code_directory_name(code)
+    code_dir = task_dir / directory_name
+    code_dir.mkdir(parents=True, exist_ok=True)
+
+    task_index = task["send_codes"].index(code)
+    cheap_model = settings.review_cheap_model or None
+    review_text = generate_review(fact_card, settings, task_id=task_id, task_index=task_index, model=cheap_model)
+    content_path = code_dir / "content.txt"
+    content_path.write_text(review_text, encoding="utf-8")
+
+    manifest_path = task_dir / "manifest.json"
+    manifest = {}
+    if manifest_path.is_file():
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            manifest = {}
+
+    results = manifest.get("results", [])
+    updated = False
+    for r in results:
+        if r.get("code") == code:
+            r["content_path"] = f"{directory_name}/content.txt"
+            updated = True
+            break
+    if not updated:
+        results.append({
+            "code": code,
+            "content_path": f"{directory_name}/content.txt",
+        })
+    manifest["results"] = results
+    manifest["task_id"] = task_id
+    manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    return {
+        "code": code,
         "content_text": review_text,
     }
 

@@ -106,6 +106,7 @@ class Settings(BaseSettings):
         "客服回复可以再及时一点",
     ])
     review_similarity_threshold: float = 0.6
+    review_cheap_model: str = ""
 
     # ── 微信发送（仅 Windows） ──
     wechat_search_bar_x: int = 170

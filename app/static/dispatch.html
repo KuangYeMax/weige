@@ -122,12 +122,11 @@
                   <input type="datetime-local" x-model="task._editTriggerAt" @change="rescheduleTask(task)"
                     :disabled="task.status === 'generating' || task.status === 'sending'"
                     class="text-xs border border-gray-300 rounded px-1 py-0.5 w-38 disabled:opacity-40 disabled:cursor-not-allowed">
-                  <button @click.prevent="toggleExpand(task)" class="px-2 py-1 text-xs border rounded hover:bg-gray-100" x-text="task._expanded ? '收起' : '展开'"></button>
                   <button @click.prevent="deleteTask(task)" class="px-2 py-1 text-xs border border-red-200 text-red-600 rounded hover:bg-red-50" :disabled="task.status === 'generating' || task.status === 'sending'">删除</button>
                 </div>
               </div>
-              <!-- Expanded manifest content -->
-              <div x-show="task._expanded" x-cloak class="mt-3 space-y-3 border-t pt-3">
+              <!-- Manifest content (always visible) -->
+              <div class="mt-3 space-y-3 border-t pt-3">
                 <div x-show="task._manifestLoading" class="text-sm text-gray-400">加载中...</div>
                 <template x-if="task._manifest && task._manifest.results">
                   <div class="space-y-4">
@@ -166,7 +165,7 @@
                     </template>
                   </div>
                 </template>
-                <div x-show="task._expanded && !task._manifestLoading && (!task._manifest || !task._manifest.results || task._manifest.results.length === 0)" class="text-sm text-gray-400">
+                <div x-show="!task._manifestLoading && (!task._manifest || !task._manifest.results || task._manifest.results.length === 0)" class="text-sm text-gray-400">
                   暂无生成内容（等待触发后自动生成）
                 </div>
               </div>

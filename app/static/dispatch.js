@@ -191,20 +191,17 @@ function dispatchApp() {
         const raw = await (await fetch('/api/dispatch')).json();
         this.tasks = raw.map(t => ({
           ...t,
-          _expanded: (this.tasks.find(x => x.task_id === t.task_id) || {})._expanded || false,
           _manifest: (this.tasks.find(x => x.task_id === t.task_id) || {})._manifest || null,
           _manifestLoading: false,
           _editTriggerAt: this._isoToDatetimeLocal(t.trigger_at),
         }));
+        for (const task of this.tasks) {
+          if (!task._manifest && !task._manifestLoading) {
+            this.loadManifest(task);
+          }
+        }
       }
       catch {} finally { this.tasksLoading = false; }
-    },
-
-    async toggleExpand(task) {
-      task._expanded = !task._expanded;
-      if (task._expanded && !task._manifest) {
-        await this.loadManifest(task);
-      }
     },
 
     async loadManifest(task) {
@@ -270,11 +267,15 @@ function dispatchApp() {
       if (!item) return;
       item._regenerating = true;
       try {
-        const res = await fetch(`/api/dispatch/${task.task_id}/regenerate/${encodeURIComponent(code)}`, { method: 'POST' });
+        const res = await fetch(`/api/dispatch/${task.task_id}/regenerate/${encodeURIComponent(code)}/${type}`, { method: 'POST' });
         if (res.ok) {
           const data = await res.json();
-          item.image_url = data.image_url;
-          item.content_text = data.content_text;
+          if (type === 'image' && data.image_url) {
+            item.image_url = data.image_url;
+          }
+          if (type === 'content' && data.content_text) {
+            item.content_text = data.content_text;
+          }
         } else {
           const d = await res.json();
           alert((d.error && d.error.message) || '重新生成失败');

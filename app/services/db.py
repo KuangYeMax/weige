@@ -437,16 +437,14 @@ def mark_dispatch_task_ready(db_path: Path, task_id: str) -> None:
         conn.close()
 
 
-def mark_dispatch_task_awaiting_confirmation(
-    db_path: Path, task_id: str, fail_reason: str | None = None
-) -> bool:
+def mark_dispatch_task_sent(db_path: Path, task_id: str) -> bool:
     conn = _connect(db_path)
     try:
         cursor = conn.execute(
             """UPDATE dispatch_tasks
-               SET status = 'awaiting_confirmation', fail_reason = ?
+               SET status = 'sent', fail_reason = NULL
                WHERE task_id = ? AND status = 'sending'""",
-            (fail_reason, task_id),
+            (task_id,),
         )
         conn.commit()
         return cursor.rowcount == 1
@@ -486,24 +484,7 @@ def retry_dispatch_task_after_review(db_path: Path, task_id: str) -> bool:
         conn.close()
 
 
-def confirm_dispatch_task_sent(db_path: Path, task_id: str) -> bool:
-    conn = _connect(db_path)
-    try:
-        cursor = conn.execute(
-            """UPDATE dispatch_tasks
-               SET status = 'sent'
-               WHERE task_id = ? AND status = 'awaiting_confirmation'""",
-            (task_id,),
-        )
-        conn.commit()
-        return cursor.rowcount == 1
-    finally:
-        conn.close()
 
-
-def mark_dispatch_task_sent(db_path: Path, task_id: str) -> bool:
-    """Backward-compatible name for confirming an acknowledged send."""
-    return confirm_dispatch_task_sent(db_path, task_id)
 
 
 
@@ -538,7 +519,7 @@ def recover_sending_dispatch_tasks(db_path: Path) -> int:
             if has_submission_uncertainty(task_id):
                 cursor = conn.execute(
                     """UPDATE dispatch_tasks
-                       SET status = 'awaiting_confirmation', fail_reason = 'SEND_ACKNOWLEDGMENT_UNCERTAIN'
+                       SET status = 'needs_review', fail_reason = 'SEND_ACKNOWLEDGMENT_UNCERTAIN'
                        WHERE task_id = ? AND status = 'sending'""",
                     (task_id,),
                 )
@@ -552,6 +533,50 @@ def recover_sending_dispatch_tasks(db_path: Path) -> int:
             recovered += cursor.rowcount
         conn.commit()
         return recovered
+    finally:
+        conn.close()
+
+
+def reschedule_dispatch_task(db_path: Path, task_id: str, new_trigger_at: str) -> dict[str, Any] | None:
+    """Update trigger_at and reset status to re-send with existing artifacts.
+
+    - If manifest.json exists → set status to 'ready' (skip generation, just send)
+    - If no manifest → set status to 'pending' (go through generation first)
+    - Returns None if task is in 'generating' or 'sending' status.
+    """
+    import json as _json
+    dispatch_root = (db_path.parent / "dispatch").resolve()
+    manifest_path = dispatch_root / task_id / "manifest.json"
+    has_manifest = manifest_path.is_file()
+    new_status = "ready" if has_manifest else "pending"
+
+    conn = _connect(db_path)
+    try:
+        cursor = conn.execute(
+            """UPDATE dispatch_tasks
+               SET trigger_at = ?, status = ?, fail_reason = NULL
+               WHERE task_id = ? AND status NOT IN ('generating', 'sending')""",
+            (new_trigger_at, new_status, task_id),
+        )
+        conn.commit()
+        if cursor.rowcount == 0:
+            return None
+        row = conn.execute(
+            "SELECT * FROM dispatch_tasks WHERE task_id = ?", (task_id,)
+        ).fetchone()
+        if row is None:
+            return None
+        return {
+            "task_id": row["task_id"],
+            "wx_remark": row["wx_remark"],
+            "send_codes": _json.loads(row["send_codes"]),
+            "countdown_days": row["countdown_days"],
+            "created_at": row["created_at"],
+            "trigger_at": row["trigger_at"],
+            "status": row["status"],
+            "fail_reason": row["fail_reason"],
+            "generation_started_at": row["generation_started_at"],
+        }
     finally:
         conn.close()
 

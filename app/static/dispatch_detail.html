@@ -81,13 +81,6 @@
             <div x-show="!manifest || !manifest.results || manifest.results.length === 0" class="text-sm text-gray-500 p-4 bg-gray-50 rounded">尚未生成产物</div>
           </section>
 
-          <section x-show="task.status === 'awaiting_confirmation'" class="mb-8 p-4 border-2 border-amber-400 rounded-lg bg-amber-50" x-cloak>
-            <h3 class="font-bold text-amber-900 mb-2">等待确认已发送</h3>
-            <div x-show="task.fail_reason" class="text-sm text-amber-800 mb-3 p-2 bg-amber-100 rounded"><strong>不确定标记：</strong><span x-text="task.fail_reason"></span></div>
-            <p class="text-sm text-amber-800 mb-3">请先到微信核对该好友是否已收到消息。</p>
-            <button @click="showConfirmSentDialog = true" class="px-4 py-2 bg-green-600 text-white rounded font-medium hover:bg-green-700">确认已发送</button>
-          </section>
-
           <section x-show="task.status === 'needs_review'" class="mb-8 p-4 border-2 border-red-400 rounded-lg bg-red-50" x-cloak>
             <h3 class="font-bold text-red-900 mb-2">需要人工复核</h3>
             <div class="text-sm text-red-800 mb-3"><strong>失败原因：</strong><span x-text="task.fail_reason || '—'"></span></div>
@@ -116,21 +109,6 @@
         <img :src="lightboxUrl" class="max-w-full max-h-full rounded shadow-2xl" @click.stop>
       </div>
 
-      <div x-show="showConfirmSentDialog" class="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" x-cloak>
-        <div class="bg-white rounded-lg p-6 max-w-md w-full shadow-xl" @click.stop>
-          <h3 class="font-bold text-lg mb-3 text-red-800">二次确认：确认已发送</h3>
-          <p class="text-sm text-gray-700 mb-4">确认前请先到微信核对该好友是否已收到，本操作不可撤销。</p>
-          <div x-show="task && task.fail_reason" class="text-sm bg-amber-50 border border-amber-200 p-2 rounded mb-4">
-            <strong>不确定标记原文：</strong><span x-text="task ? task.fail_reason : ''"></span>
-            <p class="text-xs text-amber-700 mt-1">请核对微信聊天记录是否有残留文字或未发出的图片。</p>
-          </div>
-          <div class="flex justify-end gap-3">
-            <button @click="showConfirmSentDialog = false" class="px-4 py-2 border rounded">取消</button>
-            <button @click="confirmSent()" class="px-4 py-2 bg-green-600 text-white rounded font-medium">确认已发送</button>
-          </div>
-        </div>
-      </div>
-
       <div x-show="showAbandonDialog" class="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" x-cloak>
         <div class="bg-white rounded-lg p-6 max-w-md w-full shadow-xl" @click.stop>
           <h3 class="font-bold text-lg mb-3 text-red-800">二次确认：放弃记录</h3>
@@ -149,7 +127,7 @@
   function dispatchDetail() {
     return {
       task: null, manifest: null, settings: null,
-      lightboxUrl: null, showConfirmSentDialog: false, showAbandonDialog: false,
+      lightboxUrl: null, showAbandonDialog: false,
       async init() {
         const taskId = window.location.pathname.split('/').pop();
         await this.refresh(taskId);
@@ -165,11 +143,6 @@
       formatTime(iso) { return window._formatTime(iso); },
       badgeClass(s) { return window._badgeClass(s); },
       statusLabel(s) { return window._statusLabel(s); },
-      async confirmSent() {
-        const r = await fetch(`/api/dispatch/${this.task.task_id}/confirm-sent`, {method:'POST'});
-        if (r.ok) { this.showConfirmSentDialog = false; await this.refresh(this.task.task_id); }
-        else { const d = await r.json(); alert(d.error?.message || '失败'); }
-      },
       async retryAfterReview() {
         const r = await fetch(`/api/dispatch/${this.task.task_id}/retry-after-review`, {method:'POST'});
         if (r.ok) await this.refresh(this.task.task_id);

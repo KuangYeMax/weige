@@ -22,7 +22,7 @@ from app.services.db import (
     list_ready_dispatch_tasks,
     lookup_product_by_code,
     mark_dispatch_task_failed,
-    mark_dispatch_task_awaiting_confirmation,
+    mark_dispatch_task_sent,
     mark_dispatch_task_needs_review,
     mark_dispatch_task_ready,
     mark_dispatch_task_send_failed,
@@ -38,7 +38,6 @@ from app.services.wechat.win32 import ClipboardVerificationError
 logger = logging.getLogger(__name__)
 
 SUBMISSION_UNCERTAIN = "submission_uncertain"
-SEND_ACKNOWLEDGMENT_UNCERTAIN = "SEND_ACKNOWLEDGMENT_UNCERTAIN"
 
 
 def _safe_child(parent: Path, name: str) -> Path:
@@ -366,7 +365,7 @@ def process_due_tasks(settings: Settings, *, now: datetime | None = None) -> int
     return processed
 
 
-# ─── 发送步骤（ready → sending → awaiting_confirmation） ────────────
+# ─── 发送步骤（ready → sending → sent / needs_review） ────────────
 
 
 def _resolve_sender(settings: Settings):
@@ -433,7 +432,7 @@ def _has_submission_uncertainty(manifest: dict) -> bool:
 
 
 def _send_ready_task(settings: Settings, task: dict) -> None:
-    """发送 ready 任务；越过外部发送边界后，结果不确定时等待人工确认。"""
+    """发送 ready 任务；成功标记 sent，异常标记 needs_review。"""
     task_id = task["task_id"]
     dispatch_root = settings.storage_root / "dispatch"
     task_dir = _safe_child(dispatch_root, task_id)
@@ -455,8 +454,8 @@ def _send_ready_task(settings: Settings, task: dict) -> None:
     # A persisted intent means the external sender may already have acted.
     # It is never safe for the scheduler to retry this task automatically.
     if _has_submission_uncertainty(manifest):
-        mark_dispatch_task_awaiting_confirmation(
-            settings.db_path, task_id, SEND_ACKNOWLEDGMENT_UNCERTAIN
+        mark_dispatch_task_needs_review(
+            settings.db_path, task_id, "SEND_ACKNOWLEDGMENT_UNCERTAIN"
         )
         return
 
@@ -466,7 +465,7 @@ def _send_ready_task(settings: Settings, task: dict) -> None:
         return
 
     if not send_items:
-        mark_dispatch_task_awaiting_confirmation(settings.db_path, task_id)
+        mark_dispatch_task_sent(settings.db_path, task_id)
         return
 
     for result, code, text, image_path in send_items:
@@ -538,12 +537,12 @@ def _send_ready_task(settings: Settings, task: dict) -> None:
             return
         except Exception as exc:
             logger.exception("send failed task=%s code=%s", task_id, code)
-            mark_dispatch_task_awaiting_confirmation(
-                settings.db_path, task_id, SEND_ACKNOWLEDGMENT_UNCERTAIN
+            mark_dispatch_task_needs_review(
+                settings.db_path, task_id, "SEND_ACKNOWLEDGMENT_UNCERTAIN"
             )
             return
 
-    mark_dispatch_task_awaiting_confirmation(settings.db_path, task_id)
+    mark_dispatch_task_sent(settings.db_path, task_id)
 
 
 def process_send_tasks(settings: Settings, *, only_task_id: str | None = None) -> int:

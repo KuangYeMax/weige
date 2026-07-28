@@ -180,7 +180,7 @@
       compute() {
         const now = new Date();
         const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
-        this.needsActionCount = this.tasks.filter(t => t.status === 'needs_review' || t.status === 'awaiting_confirmation').length;
+        this.needsActionCount = this.tasks.filter(t => t.status === 'needs_review').length;
         this.dueTodayCount = this.tasks.filter(t => {
           if (t.status !== 'pending') return false;
           const trigger = new Date(t.trigger_at);
@@ -191,7 +191,7 @@
           return t.status === 'failed' && t.created_at >= todayStart;
         }).length;
         this.alertTasks = this.tasks.filter(t =>
-          ['needs_review', 'awaiting_confirmation', 'failed'].includes(t.status) ||
+          ['needs_review', 'failed'].includes(t.status) ||
           (t.status === 'pending' && new Date(t.trigger_at) < now)
         );
         this.pendingSendTasks = this.tasks.filter(t =>

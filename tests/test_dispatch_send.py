@@ -9,12 +9,10 @@ import pytest
 
 from app.services.db import (
     claim_dispatch_task_sending,
-    confirm_dispatch_task_sent,
     create_dispatch_task,
     init_db,
     list_dispatch_tasks,
     list_ready_dispatch_tasks,
-    mark_dispatch_task_awaiting_confirmation,
     mark_dispatch_task_needs_review,
     mark_dispatch_task_ready,
     mark_dispatch_task_send_failed,
@@ -103,30 +101,20 @@ def test_claim_sending_rejects_non_ready(settings):
     assert claim_dispatch_task_sending(settings.db_path, task_id) is False
 
 
-def test_guarded_submission_then_confirmation_marks_task_sent(settings):
+def test_mark_sent_requires_sending_task(settings):
     task_id = uuid4().hex
     _ready_task(settings.db_path, task_id)
     assert claim_dispatch_task_sending(settings.db_path, task_id)
-    assert mark_dispatch_task_sent(settings.db_path, task_id) is False
-    assert mark_dispatch_task_awaiting_confirmation(settings.db_path, task_id) is True
-    assert confirm_dispatch_task_sent(settings.db_path, task_id) is True
+    assert mark_dispatch_task_sent(settings.db_path, task_id) is True
     task = list_dispatch_tasks(settings.db_path)[0]
     assert task["status"] == "sent"
 
 
-def test_confirmation_rejects_ready_task(settings):
+def test_mark_sent_rejects_ready_task(settings):
     task_id = uuid4().hex
     _ready_task(settings.db_path, task_id)
 
-    assert confirm_dispatch_task_sent(settings.db_path, task_id) is False
-    assert list_dispatch_tasks(settings.db_path)[0]["status"] == "ready"
-
-
-def test_awaiting_confirmation_rejects_ready_task(settings):
-    task_id = uuid4().hex
-    _ready_task(settings.db_path, task_id)
-
-    assert mark_dispatch_task_awaiting_confirmation(settings.db_path, task_id) is False
+    assert mark_dispatch_task_sent(settings.db_path, task_id) is False
     assert list_dispatch_tasks(settings.db_path)[0]["status"] == "ready"
 
 
@@ -165,7 +153,7 @@ def test_retry_after_review_route_returns_404_for_missing_task(client):
     assert response.status_code == 404
 
 
-@pytest.mark.parametrize("status", ["pending", "sending", "awaiting_confirmation", "sent"])
+@pytest.mark.parametrize("status", ["pending", "sending", "sent"])
 def test_retry_after_review_route_rejects_tasks_not_needing_review(client, settings, status):
     task_id = uuid4().hex
     _ready_task(settings.db_path, task_id)
@@ -195,40 +183,7 @@ def test_retry_after_review_route_marks_needs_review_task_ready(client, settings
     assert response.json()["status"] == "ready"
 
 
-def test_confirm_sent_route_returns_404_for_missing_task(client):
-    response = client.post(f"/api/dispatch/{uuid4().hex}/confirm-sent")
 
-    assert response.status_code == 404
-
-
-@pytest.mark.parametrize("status", ["pending", "sending", "sent"])
-def test_confirm_sent_route_rejects_tasks_not_awaiting_confirmation(client, settings, status):
-    task_id = uuid4().hex
-    _ready_task(settings.db_path, task_id)
-    if status != "ready":
-        import app.services.db as db
-        conn = db._connect(settings.db_path)
-        conn.execute("UPDATE dispatch_tasks SET status=? WHERE task_id=?", (status, task_id))
-        conn.commit()
-        conn.close()
-
-    response = client.post(f"/api/dispatch/{task_id}/confirm-sent")
-
-    assert response.status_code == 409
-    assert list_dispatch_tasks(settings.db_path)[0]["status"] == status
-
-
-def test_confirm_sent_route_marks_awaiting_confirmation_task_sent(client, settings):
-    task_id = uuid4().hex
-    _ready_task(settings.db_path, task_id)
-    assert claim_dispatch_task_sending(settings.db_path, task_id)
-    assert mark_dispatch_task_awaiting_confirmation(settings.db_path, task_id)
-
-    response = client.post(f"/api/dispatch/{task_id}/confirm-sent")
-
-    assert response.status_code == 200
-    assert response.json()["task_id"] == task_id
-    assert response.json()["status"] == "sent"
 
 
 @pytest.mark.parametrize(
@@ -282,24 +237,24 @@ def test_verify_remark_route_rejects_blank_remark_without_uia_call(client, monke
     assert response.status_code == 400
 
 
-def test_recover_sending_tasks_leaves_confirmation_pending_tasks_untouched(settings):
+def test_recover_sending_tasks_leaves_non_sending_tasks_untouched(settings):
     sending_task_id = uuid4().hex
-    confirmation_task_id = uuid4().hex
+    sent_task_id = uuid4().hex
     _ready_task(settings.db_path, sending_task_id)
-    _ready_task(settings.db_path, confirmation_task_id)
+    _ready_task(settings.db_path, sent_task_id)
     assert claim_dispatch_task_sending(settings.db_path, sending_task_id) is True
-    assert claim_dispatch_task_sending(settings.db_path, confirmation_task_id) is True
-    assert mark_dispatch_task_awaiting_confirmation(settings.db_path, confirmation_task_id) is True
+    assert claim_dispatch_task_sending(settings.db_path, sent_task_id) is True
+    assert mark_dispatch_task_sent(settings.db_path, sent_task_id) is True
 
     assert recover_sending_dispatch_tasks(settings.db_path) == 1
     tasks = {task["task_id"]: task for task in list_dispatch_tasks(settings.db_path)}
     assert tasks[sending_task_id]["status"] == "ready"
     assert tasks[sending_task_id]["fail_reason"] == "SEND_INTERRUPTED"
-    assert tasks[confirmation_task_id]["status"] == "awaiting_confirmation"
-    assert tasks[confirmation_task_id]["fail_reason"] is None
+    assert tasks[sent_task_id]["status"] == "sent"
+    assert tasks[sent_task_id]["fail_reason"] is None
 
 
-def test_recover_sending_task_with_uncertain_manifest_waits_for_confirmation(settings):
+def test_recover_sending_task_with_uncertain_manifest_goes_to_needs_review(settings):
     task_id = uuid4().hex
     _ready_task(settings.db_path, task_id)
     assert claim_dispatch_task_sending(settings.db_path, task_id) is True
@@ -312,7 +267,7 @@ def test_recover_sending_task_with_uncertain_manifest_waits_for_confirmation(set
 
     assert recover_sending_dispatch_tasks(settings.db_path) == 1
     task = list_dispatch_tasks(settings.db_path)[0]
-    assert task["status"] == "awaiting_confirmation"
+    assert task["status"] == "needs_review"
     assert task["fail_reason"] == "SEND_ACKNOWLEDGMENT_UNCERTAIN"
 
 
@@ -350,7 +305,7 @@ def test_list_ready_excludes_other_statuses(settings):
     assert [r["task_id"] for r in ready] == [t1]
 
 
-def test_process_send_success_waits_for_confirmation(settings, monkeypatch):
+def test_process_send_success_marks_sent(settings, monkeypatch):
     task_id = uuid4().hex
     _ready_task_with_artifacts(settings, task_id)
     sends = []
@@ -362,7 +317,7 @@ def test_process_send_success_waits_for_confirmation(settings, monkeypatch):
 
     assert process_send_tasks(settings) == 1
     assert len(sends) == 1
-    assert list_dispatch_tasks(settings.db_path)[0]["status"] == "awaiting_confirmation"
+    assert list_dispatch_tasks(settings.db_path)[0]["status"] == "sent"
 
 
 def test_process_send_partial_sender_failure_is_not_retried(settings, monkeypatch):
@@ -381,7 +336,7 @@ def test_process_send_partial_sender_failure_is_not_retried(settings, monkeypatc
     manifest = json.loads((task_dir / "manifest.json").read_text(encoding="utf-8"))
     assert attempts == ["好评文案"]
     assert manifest["results"][0]["status"] == "submission_uncertain"
-    assert task["status"] == "awaiting_confirmation"
+    assert task["status"] == "needs_review"
     assert task["fail_reason"] == "SEND_ACKNOWLEDGMENT_UNCERTAIN"
 
     assert process_send_tasks(settings) == 0
@@ -425,7 +380,7 @@ def test_process_send_uia_preflight_failure_can_be_reviewed_and_retried(settings
     assert process_send_tasks(settings) == 1
     assert verification_calls == [("测试好友", settings), ("测试好友", settings)]
     assert len(payload_calls) == 1
-    assert list_dispatch_tasks(settings.db_path)[0]["status"] == "awaiting_confirmation"
+    assert list_dispatch_tasks(settings.db_path)[0]["status"] == "sent"
 
 
 def test_process_send_does_not_retry_needs_review_task(settings, monkeypatch):
@@ -476,7 +431,7 @@ def test_process_send_crash_after_sender_return_does_not_retry_after_recovery(se
     assert process_send_tasks(settings) == 0
     assert attempts == ["好评文案"]
     task = list_dispatch_tasks(settings.db_path)[0]
-    assert task["status"] == "awaiting_confirmation"
+    assert task["status"] == "needs_review"
     assert task["fail_reason"] == "SEND_ACKNOWLEDGMENT_UNCERTAIN"
 
 
@@ -492,7 +447,7 @@ def test_process_send_does_not_retry_uncertain_code_after_recovery(settings, mon
 
     monkeypatch.setattr("app.services.wechat.sender.send", fail_second_send)
     assert process_send_tasks(settings) == 1
-    assert list_dispatch_tasks(settings.db_path)[0]["status"] == "awaiting_confirmation"
+    assert list_dispatch_tasks(settings.db_path)[0]["status"] == "needs_review"
     first_manifest = json.loads((task_dir / "manifest.json").read_text(encoding="utf-8"))
     assert [result["status"] for result in first_manifest["results"]] == ["local_submitted", "submission_uncertain"]
 
@@ -505,7 +460,7 @@ def test_process_send_does_not_retry_uncertain_code_after_recovery(settings, mon
 
     assert process_send_tasks(settings) == 0
     assert attempts == ["code1", "code2"]
-    assert list_dispatch_tasks(settings.db_path)[0]["status"] == "awaiting_confirmation"
+    assert list_dispatch_tasks(settings.db_path)[0]["status"] == "needs_review"
     final_manifest = json.loads((task_dir / "manifest.json").read_text(encoding="utf-8"))
     assert [result["status"] for result in final_manifest["results"]] == ["local_submitted", "submission_uncertain"]
 
@@ -528,7 +483,7 @@ def test_process_send_on_non_windows_stays_ready_and_cannot_be_confirmed(setting
     manifest = json.loads((task_dir / "manifest.json").read_text(encoding="utf-8"))
     assert manifest["results"][0]["status"] == "ready"
 
-    assert confirm_dispatch_task_sent(settings.db_path, task_id) is False
+    assert mark_dispatch_task_sent(settings.db_path, task_id) is False
     assert list_dispatch_tasks(settings.db_path)[0]["status"] == "ready"
 
 
@@ -550,8 +505,7 @@ def test_process_send_sender_platform_error_reverts_intent_and_cannot_be_confirm
     manifest = json.loads((task_dir / "manifest.json").read_text(encoding="utf-8"))
     assert manifest["results"][0]["status"] == "ready"
 
-    response = client.post(f"/api/dispatch/{task_id}/confirm-sent")
-    assert response.status_code == 409
+    assert mark_dispatch_task_sent(settings.db_path, task_id) is False
     assert list_dispatch_tasks(settings.db_path)[0]["status"] == "ready"
 
 
@@ -622,12 +576,12 @@ def test_process_send_rejects_invalid_manifest_structure(settings, manifest):
 
 def test_scheduler_startup_recovers_sending_tasks_only(settings):
     sending_task_id = uuid4().hex
-    confirmation_task_id = uuid4().hex
+    sent_task_id = uuid4().hex
     _ready_task(settings.db_path, sending_task_id)
-    _ready_task(settings.db_path, confirmation_task_id)
+    _ready_task(settings.db_path, sent_task_id)
     assert claim_dispatch_task_sending(settings.db_path, sending_task_id)
-    assert claim_dispatch_task_sending(settings.db_path, confirmation_task_id)
-    assert mark_dispatch_task_awaiting_confirmation(settings.db_path, confirmation_task_id)
+    assert claim_dispatch_task_sending(settings.db_path, sent_task_id)
+    assert mark_dispatch_task_sent(settings.db_path, sent_task_id)
     stopped = asyncio.Event()
     stopped.set()
 
@@ -636,7 +590,7 @@ def test_scheduler_startup_recovers_sending_tasks_only(settings):
     tasks = {task["task_id"]: task for task in list_dispatch_tasks(settings.db_path)}
     assert tasks[sending_task_id]["status"] == "ready"
     assert tasks[sending_task_id]["fail_reason"] == "SEND_INTERRUPTED"
-    assert tasks[confirmation_task_id]["status"] == "awaiting_confirmation"
+    assert tasks[sent_task_id]["status"] == "sent"
 
 
 # ─── manifest 不可读 → needs_review（不许自动重跑） ───────────
@@ -709,9 +663,9 @@ def test_clipboard_readback_failure_goes_to_needs_review(settings, monkeypatch):
     assert process_send_tasks(settings) == 0
 
 
-def test_clipboard_readback_crash_recovery_goes_to_awaiting_confirmation(settings, monkeypatch):
+def test_clipboard_readback_crash_recovery_goes_to_needs_review(settings, monkeypatch):
     """模拟 kill -9 场景：clipboard 失败后如果 DB 写入前崩溃，
-    恢复逻辑读到 submission_uncertain 的 manifest → awaiting_confirmation。"""
+    恢复逻辑读到 submission_uncertain 的 manifest → needs_review。"""
     task_id = uuid4().hex
     task_dir, code_dir = _ready_task_with_artifacts(settings, task_id)
     assert claim_dispatch_task_sending(settings.db_path, task_id)
@@ -731,6 +685,6 @@ def test_clipboard_readback_crash_recovery_goes_to_awaiting_confirmation(setting
     assert recovered == 1
 
     tasks = {t["task_id"]: t for t in list_dispatch_tasks(settings.db_path)}
-    assert tasks[task_id]["status"] == "awaiting_confirmation"
+    assert tasks[task_id]["status"] == "needs_review"
     assert tasks[task_id]["fail_reason"] == "SEND_ACKNOWLEDGMENT_UNCERTAIN"
 

@@ -117,6 +117,10 @@ class DispatchRemarkVerificationRequest(BaseModel):
     wx_remark: str
 
 
+class DispatchTaskReschedule(BaseModel):
+    trigger_at: str
+
+
 class DispatchTaskOut(BaseModel):
     task_id: str
     wx_remark: str

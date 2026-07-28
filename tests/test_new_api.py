@@ -116,9 +116,9 @@ class TestAbandon:
         assert r.status_code == 200
         assert r.json()["status"] == "abandoned"
 
-    def test_abandon_rejected_for_awaiting_confirmation(self, client, settings, ready_task):
-        from app.services.db import claim_dispatch_task_sending, mark_dispatch_task_awaiting_confirmation
+    def test_abandon_rejected_for_sent_task(self, client, settings, ready_task):
+        from app.services.db import claim_dispatch_task_sending, mark_dispatch_task_sent
         claim_dispatch_task_sending(settings.db_path, ready_task)
-        mark_dispatch_task_awaiting_confirmation(settings.db_path, ready_task)
+        mark_dispatch_task_sent(settings.db_path, ready_task)
         r = client.post(f"/api/dispatch/{ready_task}/abandon")
         assert r.status_code == 409

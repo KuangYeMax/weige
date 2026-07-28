@@ -34,7 +34,7 @@ function dispatchApp() {
     get filteredTasks() {
       let list = [...this.tasks];
       if (this.filter === 'needs_action') {
-        list = list.filter(t => t.status === 'needs_review' || t.status === 'awaiting_confirmation');
+        list = list.filter(t => t.status === 'needs_review');
       } else if (this.filter === 'in_progress') {
         list = list.filter(t => ['generating', 'ready', 'sending'].includes(t.status));
       } else if (this.filter === 'pending') {
@@ -47,7 +47,7 @@ function dispatchApp() {
       } else if (this.filter === 'failed_today') {
         list = list.filter(t => t.status === 'failed');
       }
-      const priority = { needs_review: 0, awaiting_confirmation: 1, generating: 2, ready: 3, sending: 4, pending: 5, failed: 6, sent: 7, abandoned: 8 };
+      const priority = { needs_review: 0, generating: 1, ready: 2, sending: 3, pending: 4, failed: 5, sent: 6, abandoned: 7 };
       list.sort((a, b) => (priority[a.status] ?? 99) - (priority[b.status] ?? 99));
       return list;
     },
@@ -74,6 +74,14 @@ function dispatchApp() {
     _toDatetimeLocal(d) {
       const pad = n => String(n).padStart(2, '0');
       return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    },
+
+    _isoToDatetimeLocal(iso) {
+      if (!iso) return '';
+      try {
+        const d = new Date(iso);
+        return this._toDatetimeLocal(d);
+      } catch { return ''; }
     },
 
     async loadSettings() {
@@ -186,6 +194,7 @@ function dispatchApp() {
           _expanded: (this.tasks.find(x => x.task_id === t.task_id) || {})._expanded || false,
           _manifest: (this.tasks.find(x => x.task_id === t.task_id) || {})._manifest || null,
           _manifestLoading: false,
+          _editTriggerAt: this._isoToDatetimeLocal(t.trigger_at),
         }));
       }
       catch {} finally { this.tasksLoading = false; }
@@ -227,6 +236,33 @@ function dispatchApp() {
           alert((d.error && d.error.message) || '删除失败');
         }
       } catch { alert('网络错误'); }
+    },
+
+    async rescheduleTask(task) {
+      const newVal = task._editTriggerAt;
+      if (!newVal || this._isoToDatetimeLocal(task.trigger_at) === newVal) return;
+      task._rescheduling = true;
+      try {
+        const iso = new Date(newVal).toISOString();
+        const res = await fetch(`/api/dispatch/${task.task_id}/reschedule`, {
+          method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ trigger_at: iso }),
+        });
+        if (res.ok) {
+          const updated = await res.json();
+          task.trigger_at = updated.trigger_at;
+          task.status = updated.status;
+          task.fail_reason = updated.fail_reason;
+          task._editTriggerAt = this._isoToDatetimeLocal(updated.trigger_at);
+        } else {
+          task._editTriggerAt = this._isoToDatetimeLocal(task.trigger_at);
+          const e = await res.json();
+          alert((e.error && e.error.message) || '修改触发时间失败');
+        }
+      } catch {
+        task._editTriggerAt = this._isoToDatetimeLocal(task.trigger_at);
+        alert('网络错误');
+      } finally { task._rescheduling = false; }
     },
 
     async regenerateItem(task, code, type) {

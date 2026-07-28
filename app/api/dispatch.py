@@ -9,13 +9,18 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
 from app.config import Settings
-from app.schemas import DispatchRemarkVerificationRequest, DispatchTaskCreate, DispatchTaskOut
+from app.schemas import (
+    DispatchRemarkVerificationRequest,
+    DispatchTaskCreate,
+    DispatchTaskOut,
+    DispatchTaskReschedule,
+)
 from app.services.db import (
-    confirm_dispatch_task_sent,
     create_dispatch_task,
     get_dispatch_task,
     list_dispatch_tasks,
     lookup_product_by_code,
+    reschedule_dispatch_task,
     retry_dispatch_task_after_review,
 )
 
@@ -147,22 +152,6 @@ def create_dispatch_router() -> APIRouter:
             )
         return get_dispatch_task(settings.db_path, task_id)
 
-    @router.post("/{task_id}/confirm-sent", response_model=DispatchTaskOut)
-    async def confirm_sent(task_id: str, request: Request):
-        settings = _settings(request)
-        task = get_dispatch_task(settings.db_path, task_id)
-        if task is None:
-            return JSONResponse(
-                status_code=404,
-                content={"error": {"code": "DISPATCH_TASK_NOT_FOUND", "message": "发送任务不存在"}},
-            )
-        if not confirm_dispatch_task_sent(settings.db_path, task_id):
-            return JSONResponse(
-                status_code=409,
-                content={"error": {"code": "DISPATCH_CONFIRMATION_NOT_ALLOWED", "message": "任务当前状态不能确认已发送"}},
-            )
-        return get_dispatch_task(settings.db_path, task_id)
-
     @router.get("/{task_id}")
     async def get_dispatch_detail(task_id: str, request: Request):
         settings = _settings(request)
@@ -214,6 +203,38 @@ def create_dispatch_router() -> APIRouter:
         result = _regenerate_item(settings, task_id, task, code)
         return result
 
+    @router.post("/{task_id}/reschedule", response_model=DispatchTaskOut)
+    async def reschedule_dispatch(body: DispatchTaskReschedule, task_id: str, request: Request):
+        settings = _settings(request)
+        task = get_dispatch_task(settings.db_path, task_id)
+        if task is None:
+            return JSONResponse(
+                status_code=404,
+                content={"error": {"code": "DISPATCH_TASK_NOT_FOUND", "message": "发送任务不存在"}},
+            )
+        if task["status"] in ("generating", "sending"):
+            return JSONResponse(
+                status_code=409,
+                content={"error": {"code": "RESCHEDULE_NOT_ALLOWED", "message": "正在生成或发送中的记录不能修改触发时间"}},
+            )
+        try:
+            trigger_dt = datetime.fromisoformat(body.trigger_at.replace("Z", "+00:00"))
+            if trigger_dt.tzinfo is None:
+                trigger_dt = trigger_dt.replace(tzinfo=timezone.utc)
+            trigger_at_iso = trigger_dt.isoformat()
+        except ValueError:
+            return JSONResponse(
+                status_code=400,
+                content={"error": {"code": "INVALID_TRIGGER_AT", "message": "触发时间格式无效"}},
+            )
+        updated = reschedule_dispatch_task(settings.db_path, task_id, trigger_at_iso)
+        if updated is None:
+            return JSONResponse(
+                status_code=409,
+                content={"error": {"code": "RESCHEDULE_NOT_ALLOWED", "message": "无法修改触发时间"}},
+            )
+        return updated
+
     @router.post("/{task_id}/abandon")
     async def abandon_task(task_id: str, request: Request):
         settings = _settings(request)
@@ -222,11 +243,6 @@ def create_dispatch_router() -> APIRouter:
             return JSONResponse(
                 status_code=404,
                 content={"error": {"code": "DISPATCH_TASK_NOT_FOUND", "message": "发送任务不存在"}},
-            )
-        if task["status"] == "awaiting_confirmation":
-            return JSONResponse(
-                status_code=409,
-                content={"error": {"code": "ABANDON_NOT_ALLOWED", "message": "awaiting_confirmation 状态不能放弃：消息可能已发出，请去微信核对后再决定"}},
             )
         if task["status"] not in ("needs_review", "failed"):
             return JSONResponse(

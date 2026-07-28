@@ -117,9 +117,11 @@
                   <span class="font-medium truncate" x-text="task.wx_remark"></span>
                   <span class="text-xs text-gray-500 hidden sm:inline" x-text="task.send_codes.join(', ')"></span>
                 </a>
-                <div class="flex items-center gap-3 text-xs text-gray-500 shrink-0">
+                <div class="flex items-center gap-2 text-xs text-gray-500 shrink-0">
                   <span x-text="task.fail_reason ? task.fail_reason.substring(0,30) : ''" class="text-red-500 hidden md:inline"></span>
-                  <span x-text="formatTime(task.trigger_at)"></span>
+                  <input type="datetime-local" x-model="task._editTriggerAt" @change="rescheduleTask(task)"
+                    :disabled="task.status === 'generating' || task.status === 'sending'"
+                    class="text-xs border border-gray-300 rounded px-1 py-0.5 w-38 disabled:opacity-40 disabled:cursor-not-allowed">
                   <button @click.prevent="toggleExpand(task)" class="px-2 py-1 text-xs border rounded hover:bg-gray-100" x-text="task._expanded ? '收起' : '展开'"></button>
                   <button @click.prevent="deleteTask(task)" class="px-2 py-1 text-xs border border-red-200 text-red-600 rounded hover:bg-red-50" :disabled="task.status === 'generating' || task.status === 'sending'">删除</button>
                 </div>

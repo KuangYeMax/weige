@@ -63,7 +63,7 @@
     return {
       tasks: [], resultFilter: '',
       get filtered() {
-        let list = this.tasks.filter(t => ['sent','failed','abandoned','needs_review','awaiting_confirmation'].includes(t.status));
+        let list = this.tasks.filter(t => ['sent','failed','abandoned','needs_review'].includes(t.status));
         if (this.resultFilter) list = list.filter(t => t.status === this.resultFilter);
         list.sort((a, b) => (b.trigger_at || '').localeCompare(a.trigger_at || ''));
         return list;

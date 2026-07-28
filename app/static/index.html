@@ -127,17 +127,32 @@
 
       <section class="workflow-band" x-show="product && factSaved" x-cloak aria-labelledby="generate-title">
         <div class="shell workflow-grid">
-          <div class="step-label"><span>03</span><div><h2 id="generate-title">设置生成</h2><p>每次生成 1 张</p></div></div>
+          <div class="step-label"><span>03</span><div><h2 id="generate-title">设置生成</h2><p>单张或全模型对比</p></div></div>
           <div class="work-area generate-layout">
             <div class="control-group">
-              <div class="control-heading"><h3>拍摄类型</h3><span>IMAGE · <strong x-text="health?.image_provider || '—'"></strong></span></div>
-              <div class="segmented-control three">
-                <template x-for="type in ['完整照', '中近景', '细节照']" :key="type"><button type="button" :class="{'active': shotType === type}" @click="shotType = type" x-text="type"></button></template>
+              <div class="control-heading"><h3>拍摄类型</h3></div>
+              <div class="segmented-control">
+                <template x-for="type in ['中近景', '细节照']" :key="type"><button type="button" :class="{'active': shotType === type}" @click="shotType = type" x-text="type"></button></template>
               </div>
             </div>
             <div class="control-group">
               <div class="control-heading"><h3>画面比例</h3><span x-text="aspectRatio === '3:4' ? '竖版' : '方图'"></span></div>
               <div class="segmented-control"><button type="button" :class="{'active': aspectRatio === '3:4'}" @click="aspectRatio = '3:4'">3:4</button><button type="button" :class="{'active': aspectRatio === '1:1'}" @click="aspectRatio = '1:1'">1:1</button></div>
+            </div>
+            <div class="control-group">
+              <div class="control-heading"><h3>Provider / 模型</h3></div>
+              <div class="model-selectors" style="display:flex;gap:0.75rem;flex-wrap:wrap;">
+                <select x-model="selectedProvider" @change="onProviderChange()" style="padding:0.4rem 0.6rem;border-radius:6px;border:1px solid #ccc;font-size:0.875rem;">
+                  <option value="">默认 Provider</option>
+                  <template x-for="p in providers" :key="p"><option :value="p" x-text="p"></option></template>
+                </select>
+                <select x-model="selectedModel" style="padding:0.4rem 0.6rem;border-radius:6px;border:1px solid #ccc;font-size:0.875rem;">
+                  <option value="">默认模型</option>
+                  <template x-for="m in filteredModels" :key="m.model_id">
+                    <option :value="m.model_id" x-text="m.label + (m.supports_reference ? '' : ' (仅文生图)')"></option>
+                  </template>
+                </select>
+              </div>
             </div>
             <fieldset class="scene-group">
               <legend>选择场景</legend>
@@ -148,19 +163,23 @@
                     <span class="radio-mark"></span>
                     <span class="scene-copy"><strong x-text="scene['场景'] || `场景 ${index + 1}`"></strong><span x-text="scene['具体位置'] || '未填写具体位置'"></span></span>
                     <span class="confidence" :class="confidenceClass(scene)"></span>
-                    <span class="review-flag" x-show="false"></span>
                   </label>
                 </template>
-                <div class=”empty-scenes” x-show=”!scenes.length”>事实卡中没有候选场景，请先在 JSON 中补充”自然场景”。</div>
+                <div class="empty-scenes" x-show="!scenes.length">事实卡中没有候选场景，将使用"通用场景 · 自然摆放"生成。</div>
               </div>
             </fieldset>
-            <div class="generation-action">
-              <button type="button" class="primary-button generate-button" :disabled="generating || sceneIndex < 0" @click="generate()">
+            <div class="generation-action" style="display:flex;gap:1rem;flex-wrap:wrap;align-items:center;">
+              <button type="button" class="primary-button generate-button" :disabled="generating" @click="generate()">
                 <span class="spinner" x-show="generating" aria-hidden="true"></span>
                 <i data-lucide="wand-sparkles" x-show="!generating" aria-hidden="true"></i>
                 <span x-text="generating ? '正在生成…' : '生成好评图'"></span>
               </button>
-              <p>生成 AI 商品场景示意图</p>
+              <button type="button" class="secondary-button" :disabled="comparing" @click="generateCompare()" style="white-space:nowrap;">
+                <span class="spinner" x-show="comparing" aria-hidden="true"></span>
+                <i data-lucide="columns-3" x-show="!comparing" aria-hidden="true"></i>
+                <span x-text="comparing ? '对比生成中…' : '一键全模型对比'"></span>
+              </button>
+              <p style="font-size:0.75rem;color:#666;margin:0;">对比将调用全部模型各生成一张图</p>
             </div>
           </div>
         </div>
@@ -172,7 +191,13 @@
           <div class="work-area">
             <div class="result-loading" x-show="generating"><span class="large-spinner"></span><strong>正在生成场景图</strong><span>真实 provider 可能需要较长时间</span></div>
             <div class="result-layout" x-show="result && !generating">
-              <div class="result-image"><img :src="result?.generated_image_url" alt="AI 商品场景示意图"></div>
+              <div class="result-image">
+                <img :src="(showGraded && result?.graded_image_url) ? result.graded_image_url : result?.generated_image_url" alt="AI 商品场景示意图">
+                <div class="image-version-toggle" x-show="result?.graded_image_url">
+                  <span x-text="showGraded ? '调色版' : '原始版'" class="version-label"></span>
+                  <button type="button" class="toggle-button" @click="showGraded = !showGraded" x-text="showGraded ? '切换原始版' : '切换调色版'"></button>
+                </div>
+              </div>
               <div class="result-panel">
                 <span class="result-kicker">AI 商品场景示意图</span>
                 <h3 x-text="factCard['商品名称']"></h3>
@@ -183,9 +208,11 @@
                   <div><dt>耗时</dt><dd x-text="`${result?.elapsed_ms || 0} ms`"></dd></div>
                   <div><dt>创建时间</dt><dd x-text="formatTime(result?.created_at)"></dd></div>
                   <div><dt>Seed</dt><dd x-text="result?.seed ?? '不支持'"></dd></div>
+                  <div><dt>当前显示</dt><dd x-text="(showGraded && result?.graded_image_url) ? '调色版' : '原始版'"></dd></div>
                 </dl>
                 <div class="result-actions">
-                  <a class="primary-button" :href="result?.generated_image_url" :download="`${factCard['商品名称'] || 'generated'}.jpg`"><i data-lucide="download" aria-hidden="true"></i>下载图片</a>
+                  <a class="primary-button" :href="(showGraded && result?.graded_image_url) ? result.graded_image_url : result?.generated_image_url" :download="`${factCard['商品名称'] || 'generated'}.jpg`"><i data-lucide="download" aria-hidden="true"></i>下载当前版</a>
+                  <a class="secondary-button" x-show="result?.graded_image_url" :href="result?.generated_image_url" :download="`${factCard['商品名称'] || 'generated'}-original.jpg`"><i data-lucide="download" aria-hidden="true"></i>下载原始版</a>
                   <button type="button" class="secondary-button" @click="generate()"><i data-lucide="refresh-cw" aria-hidden="true"></i>重新生成</button>
                 </div>
                 <details class="run-details">
@@ -199,6 +226,46 @@
           </div>
         </div>
       </section>
+      <section class="workflow-band" x-show="compareResults || comparing" x-cloak aria-labelledby="compare-title">
+        <div class="shell workflow-grid">
+          <div class="step-label"><span>05</span><div><h2 id="compare-title">对比结果</h2><p x-text="compareResults ? `${compareResults.length} 个模型 · ${compareTotalMs}ms` : '生成中…'"></p></div></div>
+          <div class="work-area">
+            <div class="result-loading" x-show="comparing"><span class="large-spinner"></span><strong>全模型对比生成中</strong><span>多个模型并行执行，请耐心等待</span></div>
+            <div x-show="compareResults && !comparing" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:1rem;">
+              <template x-for="(item, idx) in (compareResults || [])" :key="idx">
+                <div style="border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;background:white;" :style="favorites[item.model_id] ? 'border-color:#f59e0b;box-shadow:0 0 0 2px rgba(245,158,11,0.2)' : ''">
+                  <div style="padding:0.75rem;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;justify-content:space-between;">
+                    <div>
+                      <div style="font-weight:600;font-size:0.875rem;" x-text="item.label"></div>
+                      <div style="font-size:0.75rem;color:#64748b;" x-text="`${item.provider} · ${item.model_id}`"></div>
+                    </div>
+                    <button type="button" @click="toggleFavorite(item.model_id)" style="background:none;border:none;cursor:pointer;font-size:1.25rem;" :title="favorites[item.model_id] ? '取消收藏' : '标记为心仪模型'" x-text="favorites[item.model_id] ? '⭐' : '☆'"></button>
+                  </div>
+                  <div style="aspect-ratio:3/4;background:#f8fafc;display:flex;align-items:center;justify-content:center;position:relative;">
+                    <template x-if="item.status === 'ok'">
+                      <img :src="item.image_url" style="width:100%;height:100%;object-fit:cover;" :alt="`${item.label} 生成结果`">
+                    </template>
+                    <template x-if="item.status === 'error'">
+                      <div style="padding:1rem;text-align:center;color:#dc2626;font-size:0.8rem;">
+                        <i data-lucide="alert-triangle" style="width:24px;height:24px;margin:0 auto 0.5rem;" aria-hidden="true"></i>
+                        <div x-text="item.error || '生成失败'"></div>
+                      </div>
+                    </template>
+                  </div>
+                  <div style="padding:0.5rem 0.75rem;font-size:0.75rem;color:#64748b;display:flex;justify-content:space-between;align-items:center;">
+                    <span x-text="item.used_reference ? '参考图' : '纯文生图'"></span>
+                    <span x-text="`${item.elapsed_ms}ms`"></span>
+                  </div>
+                  <div x-show="item.status === 'ok'" style="padding:0 0.75rem 0.75rem;">
+                    <a class="secondary-button" style="font-size:0.75rem;padding:0.3rem 0.6rem;display:inline-flex;align-items:center;gap:0.25rem;" :href="item.image_url" :download="`compare_${item.provider}_${item.model_id}.png`"><i data-lucide="download" style="width:12px;height:12px;" aria-hidden="true"></i>下载</a>
+                  </div>
+                </div>
+              </template>
+            </div>
+          </div>
+        </div>
+      </section>
+
     </main>
   </div>
   <script src="/static/app.js"></script>

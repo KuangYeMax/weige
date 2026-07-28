@@ -8,5 +8,6 @@ def test_health_reports_provider_configuration_without_secret(client):
         "vision_provider": "mock",
         "image_provider": "mock",
         "volcengine_configured": False,
+        "bailian_configured": False,
     }
     assert "key" not in str(payload).lower()

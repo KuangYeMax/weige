@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>同物景 · 产品库</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
+  <link rel="stylesheet" href="/static/shared.css">
+</head>
+<body class="bg-gray-50">
+  <div x-data="productList">
+
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <a href="/dashboard" class="sidebar-brand">
+        <span class="brand-icon">同</span>
+        <span>同物景</span>
+      </a>
+      <nav class="sidebar-nav">
+        <a href="/dashboard" class="nav-link">告警台</a>
+        <a href="/products" class="nav-link active">产品库</a>
+        <a href="/dispatch" class="nav-link">待发列表</a>
+        <a href="/logs" class="nav-link">发送日志</a>
+        <a href="/settings" class="nav-link">设置</a>
+      </nav>
+    </aside>
+
+    <!-- Main -->
+    <div class="main-content">
+      <div class="flex items-center justify-between mb-6">
+        <h1 class="text-2xl font-bold">产品库</h1>
+        <label class="bg-green-600 text-white px-4 py-2 rounded text-sm font-medium cursor-pointer hover:bg-green-700">
+          上传产品
+          <input type="file" accept="image/jpeg,image/png,image/webp" class="hidden" @change="uploadProduct($event)">
+        </label>
+      </div>
+      <div x-show="loading" class="text-center py-12 text-gray-500">加载中...</div>
+      <div x-show="!loading && products.length === 0" class="text-center py-12 text-gray-400">暂无产品</div>
+      <div x-show="!loading" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <template x-for="product in products" :key="product.product_id">
+          <div class="bg-white rounded-lg shadow overflow-hidden flex flex-col">
+            <div class="h-40 bg-gray-100 flex items-center justify-center overflow-hidden">
+              <template x-if="product.image_path">
+                <img :src="'/storage/' + product.image_path" :alt="product.name" class="w-full h-full object-cover">
+              </template>
+              <template x-if="!product.image_path">
+                <span class="text-gray-300 text-xs">暂无图片</span>
+              </template>
+            </div>
+            <div class="p-4 flex-1 flex flex-col">
+              <div class="flex items-center justify-between mb-2">
+                <h2 class="font-semibold text-gray-800 truncate text-sm" x-text="product.name || '未命名产品'"></h2>
+                <a :href="`/product/${product.product_id}`" class="text-xs text-blue-600 hover:text-blue-800 shrink-0 ml-2">详情 &rarr;</a>
+              </div>
+              <div class="flex flex-wrap gap-1.5 mb-3">
+                <template x-for="c in product.codes" :key="c.code">
+                  <span class="inline-block bg-blue-50 text-blue-700 text-xs px-2 py-0.5 rounded" x-text="c.code"></span>
+                </template>
+                <span x-show="product.codes.length === 0" class="text-xs text-gray-400">暂无编号</span>
+              </div>
+              <div class="mt-auto flex items-center gap-2">
+                <input type="text" x-model="product._newCode" @keydown.enter="addCode(product)" placeholder="新增编号" class="border rounded px-2 py-1 text-xs w-full focus:ring-1 focus:ring-blue-400">
+                <button @click="addCode(product)" :disabled="product._submitting" class="bg-blue-600 text-white text-xs px-3 py-1 rounded disabled:opacity-50 shrink-0">添加</button>
+              </div>
+              <div x-show="product._error" class="mt-1.5 text-xs text-red-600" x-text="product._error"></div>
+              <button @click="deleteProduct(product)" class="mt-2 w-full bg-red-500 hover:bg-red-600 text-white text-xs py-2 rounded font-medium transition-colors">
+                🗑 删除产品
+              </button>
+            </div>
+          </div>
+        </template>
+      </div>
+    </div>
+  </div>
+  <script src="/static/shared.js"></script>
+  <script src="/static/products.js"></script>
+</body>
+</html>
+</content>
+</invoke>

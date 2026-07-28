@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>同物景 · 设置</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <link rel="stylesheet" href="/static/shared.css">
+</head>
+<body class="bg-gray-50">
+  <div x-data="settingsPage()" x-init="init()">
+
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <a href="/dashboard" class="sidebar-brand">
+        <span class="brand-icon">同</span>
+        <span>同物景</span>
+      </a>
+      <nav class="sidebar-nav">
+        <a href="/dashboard" class="nav-link">告警台</a>
+        <a href="/products" class="nav-link">产品库</a>
+        <a href="/dispatch" class="nav-link">待发列表</a>
+        <a href="/logs" class="nav-link">发送日志</a>
+        <a href="/settings" class="nav-link active">设置</a>
+      </nav>
+    </aside>
+
+    <!-- Main -->
+    <div class="main-content max-w-4xl">
+      <h1 class="text-2xl font-bold mb-6">设置</h1>
+
+      <div x-show="!s" class="text-center py-12 text-gray-500">加载中...</div>
+
+      <template x-if="s">
+        <div class="space-y-8">
+
+          <!-- API Keys -->
+          <section class="bg-white rounded-lg shadow p-6">
+            <h2 class="font-bold text-lg mb-4">API 密钥配置</h2>
+            <p class="text-xs text-gray-500 mb-4">填写后将写入 .env 文件并即时生效</p>
+            <div class="space-y-4">
+              <div>
+                <label class="text-sm text-gray-600 block mb-1">方舟 API Key (Volcengine/ARK)</label>
+                <div class="flex gap-2">
+                  <input type="password" x-model="apiKeys.ark_api_key" placeholder="输入方舟 API Key" class="flex-1 border rounded px-3 py-2 text-sm">
+                  <span class="self-center text-xs" :class="s.ark_api_key_configured ? 'text-green-600' : 'text-gray-400'" x-text="s.ark_api_key_configured ? '已配置' : '未配置'"></span>
+                </div>
+              </div>
+              <div>
+                <label class="text-sm text-gray-600 block mb-1">DeepSeek API Key</label>
+                <div class="flex gap-2">
+                  <input type="password" x-model="apiKeys.deepseek_api_key" placeholder="输入 DeepSeek API Key" class="flex-1 border rounded px-3 py-2 text-sm">
+                  <span class="self-center text-xs" :class="s.deepseek_api_key_configured ? 'text-green-600' : 'text-gray-400'" x-text="s.deepseek_api_key_configured ? '已配置' : '未配置'"></span>
+                </div>
+              </div>
+              <div>
+                <label class="text-sm text-gray-600 block mb-1">百炼 API Key (DashScope)</label>
+                <div class="flex gap-2">
+                  <input type="password" x-model="apiKeys.dashscope_api_key" placeholder="输入百炼 API Key" class="flex-1 border rounded px-3 py-2 text-sm">
+                  <span class="self-center text-xs" :class="s.dashscope_api_key_configured ? 'text-green-600' : 'text-gray-400'" x-text="s.dashscope_api_key_configured ? '已配置' : '未配置'"></span>
+                </div>
+              </div>
+            </div>
+            <button @click="saveApiKeys()" :disabled="savingKeys" class="mt-4 px-4 py-2 bg-blue-600 text-white rounded text-sm disabled:opacity-50" x-text="savingKeys ? '保存中...' : '保存密钥'"></button>
+            <div x-show="keyMsg" class="text-xs mt-2" :class="keyMsg.startsWith('错') ? 'text-red-600' : 'text-green-600'" x-text="keyMsg" x-cloak></div>
+          </section>
+
+          <!-- Editable settings -->
+          <section class="bg-white rounded-lg shadow p-6">
+            <h2 class="font-bold text-lg mb-4">调度配置</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div><label class="text-xs text-gray-500">随机间隔下限 (秒)</label><input type="number" step="0.1" x-model.number="form.random_interval_min" class="w-full border rounded px-3 py-2 text-sm mt-1"></div>
+              <div><label class="text-xs text-gray-500">随机间隔上限 (秒)</label><input type="number" step="0.1" x-model.number="form.random_interval_max" class="w-full border rounded px-3 py-2 text-sm mt-1"></div>
+              <div><label class="text-xs text-gray-500">调度 Provider</label><input type="text" x-model="form.dispatch_provider" class="w-full border rounded px-3 py-2 text-sm mt-1"></div>
+            </div>
+            <button @click="saveSettings()" :disabled="saving" class="mt-4 px-4 py-2 bg-green-600 text-white rounded text-sm disabled:opacity-50" x-text="saving ? '保存中...' : '保存'"></button>
+            <div x-show="saveMsg" class="text-xs mt-2" :class="saveMsg.startsWith('错') ? 'text-red-600' : 'text-green-600'" x-text="saveMsg" x-cloak></div>
+          </section>
+
+          <!-- Read-only configs -->
+          <section class="bg-white rounded-lg shadow p-6">
+            <h2 class="font-bold text-lg mb-4">只读配置</h2>
+            <div class="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
+              <div class="p-2 border rounded"><span class="text-xs text-gray-500 block">微信搜索栏 X</span><span x-text="s.wechat_search_bar_x"></span></div>
+              <div class="p-2 border rounded"><span class="text-xs text-gray-500 block">微信搜索栏 Y</span><span x-text="s.wechat_search_bar_y"></span></div>
+              <div class="p-2 border rounded"><span class="text-xs text-gray-500 block">输入框 X 偏移</span><span x-text="s.wechat_input_x_offset"></span></div>
+              <div class="p-2 border rounded"><span class="text-xs text-gray-500 block">输入框 Y 偏移</span><span x-text="s.wechat_input_y_offset"></span></div>
+              <div class="p-2 border rounded"><span class="text-xs text-gray-500 block">调色</span><span x-text="s.post_grade ? '开启' : '关闭'"></span></div>
+              <div class="p-2 border rounded"><span class="text-xs text-gray-500 block">真实池</span><span x-text="s.realism_pool ? '开启' : '关闭'"></span></div>
+            </div>
+          </section>
+
+        </div>
+      </template>
+    </div>
+  </div>
+  <script src="/static/shared.js"></script>
+  <script>
+  function settingsPage() {
+    return {
+      s: null,
+      form: { random_interval_min: 1, random_interval_max: 3, dispatch_provider: '' },
+      saving: false, saveMsg: '',
+      apiKeys: { ark_api_key: '', deepseek_api_key: '', dashscope_api_key: '' },
+      savingKeys: false, keyMsg: '',
+      async init() { await this.load(); setInterval(() => this.load(), 5000); },
+      async load() {
+        try {
+          const sr = await fetch('/api/settings');
+          this.s = await sr.json();
+          this.form.random_interval_min = this.s.wechat_send_interval_min;
+          this.form.random_interval_max = this.s.wechat_send_interval_max;
+          this.form.dispatch_provider = this.s.dispatch_image_provider;
+        } catch {}
+      },
+      async saveSettings() {
+        this.saving = true; this.saveMsg = '';
+        try {
+          const res = await fetch('/api/settings', { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(this.form) });
+          if (res.ok) { this.saveMsg = '已保存'; await this.load(); }
+          else { const e = await res.json(); this.saveMsg = '错误: ' + (e.error?.message || '失败'); }
+        } catch { this.saveMsg = '错误: 网络异常'; }
+        finally { this.saving = false; }
+      },
+      async saveApiKeys() {
+        this.savingKeys = true; this.keyMsg = '';
+        const payload = {};
+        if (this.apiKeys.ark_api_key) payload.ark_api_key = this.apiKeys.ark_api_key;
+        if (this.apiKeys.deepseek_api_key) payload.deepseek_api_key = this.apiKeys.deepseek_api_key;
+        if (this.apiKeys.dashscope_api_key) payload.dashscope_api_key = this.apiKeys.dashscope_api_key;
+        if (Object.keys(payload).length === 0) { this.keyMsg = '错误: 请至少填写一个密钥'; this.savingKeys = false; return; }
+        try {
+          const res = await fetch('/api/settings/api-keys', { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+          if (res.ok) { this.keyMsg = '已保存'; this.apiKeys = { ark_api_key: '', deepseek_api_key: '', dashscope_api_key: '' }; await this.load(); }
+          else { const e = await res.json(); this.keyMsg = '错误: ' + (e.error?.message || '失败'); }
+        } catch { this.keyMsg = '错误: 网络异常'; }
+        finally { this.savingKeys = false; }
+      },
+    };
+  }
+  </script>
+</body>
+</html>
+</content>
+</invoke>

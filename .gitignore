@@ -6,7 +6,9 @@ __pycache__/
 storage/uploads/*
 storage/generated/*
 storage/metadata/*
+storage/dispatch/*
 !storage/uploads/.gitkeep
 !storage/generated/.gitkeep
 !storage/metadata/.gitkeep
+!storage/dispatch/.gitkeep
 .playwright-mcp/

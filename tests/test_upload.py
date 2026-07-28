@@ -1,3 +1,6 @@
+import json
+import sqlite3
+
 from app.schemas import FactCard
 
 
@@ -13,6 +16,70 @@ def test_valid_image_upload_returns_accessible_original_and_fact_card(client, im
     assert FactCard.model_validate(payload["fact_card"])
     assert payload["image_info"] == {"width": 720, "height": 960, "size_bytes": len(image_bytes)}
     assert client.get(payload["original_image_url"]).status_code == 200
+
+
+def test_upload_persists_catalog_row_with_image_and_fact_card_pointer(client, settings, image_bytes):
+    response = client.post(
+        "/api/products/upload",
+        files={"image": ("product.jpg", image_bytes, "image/jpeg")},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    product = next(
+        product
+        for product in client.get("/api/products").json()["products"]
+        if product["product_id"] == payload["product_id"]
+    )
+    assert product["name"] == payload["fact_card"]["商品名称"]
+    assert product["image_path"] == payload["original_image_url"].removeprefix("/storage/")
+    assert product["image_path"].endswith(".jpg")
+    assert product["fact_card_path"] == f"metadata/product-{payload['product_id']}.json"
+
+    metadata_path = settings.storage_root / product["fact_card_path"]
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    assert metadata["fact_card"]["商品名称"] == product["name"]
+    assert metadata["fact_card"]["整体特征"]
+
+
+def test_upload_uses_original_filename_when_fact_card_name_is_missing(client, image_bytes, monkeypatch):
+    from app.api import products
+
+    class NamelessVisionProvider:
+        def analyze(self, image_path):
+            return FactCard()
+
+    monkeypatch.setattr(products, "_vision_provider", lambda settings: NamelessVisionProvider())
+    response = client.post(
+        "/api/products/upload",
+        files={"image": ("上传文件名.png", image_bytes, "image/jpeg")},
+    )
+
+    assert response.status_code == 200
+    product_id = response.json()["product_id"]
+    product = next(
+        item for item in client.get("/api/products").json()["products"] if item["product_id"] == product_id
+    )
+    assert product["name"] == "上传文件名"
+
+
+def test_upload_database_failure_is_explicit_and_rolls_back_files(client, settings, image_bytes, monkeypatch):
+    from app.api import products
+
+    def fail_upsert(*args, **kwargs):
+        raise sqlite3.OperationalError("database unavailable")
+
+    monkeypatch.setattr(products, "upsert_product", fail_upsert)
+    response = client.post(
+        "/api/products/upload",
+        files={"image": ("product.jpg", image_bytes, "image/jpeg")},
+    )
+
+    assert response.status_code == 500
+    assert response.json()["error"]["code"] == "PRODUCT_DB_SAVE_FAILED"
+    assert not list((settings.storage_root / "metadata").glob("product-*.json"))
+    assert not list((settings.storage_root / "uploads").iterdir())
+    assert client.get("/api/products").json()["products"] == []
 
 
 def test_non_image_upload_is_rejected(client):

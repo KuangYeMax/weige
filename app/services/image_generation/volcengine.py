@@ -124,12 +124,14 @@ class VolcengineImageProvider:
             raise AppError("FILE_SAVE_FAILED", "生成图片保存失败", 500) from exc
         return output_path
 
-    def generate(self, reference_image_path: Path, prompt: str, size: str) -> GenerationResult:
-        if not self.api_key or not self.model:
+    def generate(self, reference_image_path: Path, prompt: str, size: str, *, model_id: str | None = None) -> GenerationResult:
+        effective_model = model_id or self.model
+        if not self.api_key or not effective_model:
             raise AppError(
                 "VOLCENGINE_NOT_CONFIGURED", "火山生图服务尚未配置 API Key 和模型", 503
             )
         payload = self.build_request_payload(reference_image_path, prompt, size)
+        payload["model"] = effective_model
         headers = {"Authorization": f"Bearer {self.api_key}"}
         with httpx.Client(timeout=self.timeout, transport=self.transport) as client:
             response = request_with_retry(
@@ -159,6 +161,6 @@ class VolcengineImageProvider:
         output_path = self.save_validated_image(content)
         return GenerationResult(
             output_path=output_path,
-            model=self.model,
+            model=effective_model,
             seed=item.get("seed") or body.get("seed"),
         )

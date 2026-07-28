@@ -144,8 +144,11 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, summary:focus
 .result-loading span:last-child { font-size: 12px; }
 .large-spinner { width: 40px; height: 40px; border: 3px solid #d8e4dd; border-top-color: var(--green); border-radius: 50%; animation: spin .9s linear infinite; margin-bottom: 8px; }
 .result-layout { display: grid; grid-template-columns: minmax(320px, 1fr) minmax(360px, .82fr); gap: 32px; align-items: start; }
-.result-image { background: #dfe5e1; min-height: 420px; display: grid; place-items: center; }
+.result-image { background: #dfe5e1; min-height: 420px; display: grid; place-items: center; position: relative; }
 .result-image img { width: 100%; max-height: 720px; object-fit: contain; }
+.image-version-toggle { position: absolute; bottom: 12px; left: 12px; display: flex; align-items: center; gap: 8px; background: rgba(255,255,255,0.9); border-radius: 6px; padding: 4px 10px; font-size: 0.8rem; }
+.version-label { font-weight: 600; color: var(--green-dark); }
+.toggle-button { background: var(--green-soft); color: var(--green-dark); border: 1px solid var(--green); border-radius: 4px; padding: 2px 8px; font-size: 0.75rem; cursor: pointer; }
 .result-panel { min-width: 0; padding-top: 4px; }
 .result-kicker { display: inline-block; color: var(--green); font-size: 11px; font-weight: 800; margin-bottom: 8px; }
 .result-panel > h3 { margin: 0 0 22px; font-size: 23px; line-height: 1.3; }

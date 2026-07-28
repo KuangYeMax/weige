@@ -12,18 +12,37 @@ function productStudio() {
     factJson: '',
     factSaved: false,
     savingFact: false,
-    shotType: '完整照',
+    shotType: '中近景',
     aspectRatio: '3:4',
     sceneIndex: -1,
     generating: false,
     result: null,
+    showGraded: true,
+    models: [],
+    selectedProvider: '',
+    selectedModel: '',
+    comparing: false,
+    compareResults: null,
+    compareTotalMs: 0,
+    favorites: {},
 
     get scenes() {
       return Array.isArray(this.factCard?.['自然场景']) ? this.factCard['自然场景'] : [];
     },
 
+    get filteredModels() {
+      if (!this.selectedProvider) return this.models;
+      return this.models.filter(m => m.provider === this.selectedProvider);
+    },
+
+    get providers() {
+      const set = new Set(this.models.map(m => m.provider));
+      return [...set];
+    },
+
     async init() {
       await this.loadHealth();
+      await this.loadModels();
       this.refreshIcons();
     },
 
@@ -34,6 +53,20 @@ function productStudio() {
       } catch (_error) {
         this.error = '无法连接本地服务，请确认后端已经启动。';
       }
+    },
+
+    async loadModels() {
+      try {
+        const response = await fetch('/api/models');
+        const data = await response.json();
+        this.models = data.models || [];
+      } catch (_error) {
+        this.models = [];
+      }
+    },
+
+    onProviderChange() {
+      this.selectedModel = '';
     },
 
     handleDrop(event) {
@@ -57,6 +90,7 @@ function productStudio() {
       this.previewUrl = URL.createObjectURL(file);
       this.product = null;
       this.result = null;
+      this.compareResults = null;
       this.factSaved = false;
       this.error = '';
       this.refreshIcons();
@@ -78,6 +112,7 @@ function productStudio() {
         this.factSaved = true;
         this.selectSafeDefaultScene();
         this.result = null;
+        this.compareResults = null;
       } catch (error) {
         this.error = error.message;
       } finally {
@@ -110,7 +145,8 @@ function productStudio() {
       this.error = '';
       try {
         const parsed = this.parseFactJson();
-        const response = await fetch(`/api/products/${this.product.product_id}/fact-card`, {
+        const url = `/api/products/${this.product.product_id}/fact-card`;
+        const response = await fetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(parsed),
@@ -141,24 +177,26 @@ function productStudio() {
       this.sceneIndex = this.scenes.length > 0 ? 0 : -1;
     },
 
-    confidenceClass(scene) {
-      return 'medium';
-    },
+    confidenceClass() { return 'medium'; },
 
     async generate() {
-      if (!this.product || this.sceneIndex < 0 || this.generating) return;
+      if (!this.product || this.generating) return;
       this.generating = true;
       this.error = '';
       try {
-        const response = await fetch(`/api/products/${this.product.product_id}/generate`, {
+        const payload = {
+          fact_card: this.factCard,
+          shot_type: this.shotType,
+          scene_index: Math.max(0, this.sceneIndex),
+          aspect_ratio: this.aspectRatio,
+        };
+        if (this.selectedProvider) payload.image_provider = this.selectedProvider;
+        if (this.selectedModel) payload.image_model = this.selectedModel;
+        const url = `/api/products/${this.product.product_id}/generate`;
+        const response = await fetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            fact_card: this.factCard,
-            shot_type: this.shotType,
-            scene_index: this.sceneIndex,
-            aspect_ratio: this.aspectRatio,
-          }),
+          body: JSON.stringify(payload),
         });
         this.result = await this.readResponse(response);
       } catch (error) {
@@ -167,6 +205,36 @@ function productStudio() {
         this.generating = false;
         this.refreshIcons();
       }
+    },
+
+    async generateCompare() {
+      if (!this.product || this.comparing) return;
+      this.comparing = true;
+      this.compareResults = null;
+      this.error = '';
+      try {
+        const url = `/api/products/${this.product.product_id}/generate-compare`;
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            shot_type: this.shotType,
+            aspect_ratio: this.aspectRatio,
+          }),
+        });
+        const data = await this.readResponse(response);
+        this.compareResults = data.results;
+        this.compareTotalMs = data.total_elapsed_ms;
+      } catch (error) {
+        this.error = error.message;
+      } finally {
+        this.comparing = false;
+        this.refreshIcons();
+      }
+    },
+
+    toggleFavorite(modelId) {
+      this.favorites[modelId] = !this.favorites[modelId];
     },
 
     async readResponse(response) {

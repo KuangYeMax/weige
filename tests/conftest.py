@@ -15,9 +15,12 @@ def settings(tmp_path):
     return Settings(
         vision_provider="mock",
         image_provider="mock",
+        dispatch_image_provider="mock",
         ark_api_key="",
         ark_vision_model="",
         ark_image_model="",
+        dashscope_api_key="",
+        dashscope_base_url="",
         storage_root=tmp_path / "storage",
     )
 

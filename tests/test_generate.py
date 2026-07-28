@@ -18,7 +18,7 @@ def test_mock_generation_returns_accessible_image_and_metadata(client, uploaded_
         f"/api/products/{uploaded_product['product_id']}/generate",
         json={
             "fact_card": uploaded_product["fact_card"],
-            "shot_type": "完整照",
+            "shot_type": "中近景",
             "scene_index": 0,
             "aspect_ratio": "3:4",
         },
@@ -32,6 +32,8 @@ def test_mock_generation_returns_accessible_image_and_metadata(client, uploaded_
     assert client.get(payload["generated_image_url"]).status_code == 200
     assert payload["fact_card"]["商品名称"]
     assert payload["product_brief"]
+    assert payload["graded_image_url"] is not None
+    assert client.get(payload["graded_image_url"]).status_code == 200
 
 
 def test_missing_product_returns_404(client):
@@ -39,7 +41,7 @@ def test_missing_product_returns_404(client):
         "/api/products/00000000-0000-0000-0000-000000000000/generate",
         json={
             "fact_card": {"商品名称": "测试"},
-            "shot_type": "完整照",
+            "shot_type": "中近景",
             "scene_index": 0,
             "aspect_ratio": "1:1",
         },
@@ -64,7 +66,7 @@ def test_unconfigured_volcengine_image_provider_has_clear_error(settings, image_
             f"/api/products/{upload['product_id']}/generate",
             json={
                 "fact_card": upload["fact_card"],
-                "shot_type": "完整照",
+                "shot_type": "中近景",
                 "scene_index": 0,
                 "aspect_ratio": "1:1",
             },
@@ -103,12 +105,12 @@ def test_unexpected_generation_failure_is_recorded(client, uploaded_product, set
         def generate(self, reference_image_path, prompt, size):
             raise OSError("disk unavailable")
 
-    monkeypatch.setattr(products, "_image_provider", lambda _settings: BrokenProvider())
+    monkeypatch.setattr(products, "_image_provider", lambda _s, _p=None, _m=None: (BrokenProvider(), "mock"))
     response = client.post(
         f"/api/products/{uploaded_product['product_id']}/generate",
         json={
             "fact_card": uploaded_product["fact_card"],
-            "shot_type": "完整照",
+            "shot_type": "中近景",
             "scene_index": 0,
             "aspect_ratio": "1:1",
         },

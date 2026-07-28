@@ -69,7 +69,9 @@ class TestSettings:
 
 
 class TestWechatStatus:
-    def test_returns_platform_unsupported_on_macos(self, client):
+    def test_returns_platform_unsupported_on_macos(self, client, monkeypatch):
+        import app.api.wechat as wechat_route
+        monkeypatch.setattr(wechat_route.sys, "platform", "darwin")
         r = client.get("/api/wechat/status")
         assert r.status_code == 200
         data = r.json()

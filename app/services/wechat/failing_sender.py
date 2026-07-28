@@ -10,7 +10,6 @@ from app.config import Settings
 from app.services.wechat.uia import (
     ChatVerificationError,
     ChatVerificationResult,
-    UIAutomationUnavailableError,
 )
 from app.services.wechat.win32 import ClipboardVerificationError
 
@@ -19,8 +18,7 @@ _VERIFY_EXCEPTIONS = {
     "header-mismatch": lambda: ChatVerificationError("会话头部名称与备注名不一致"),
     "header-unreadable": lambda: ChatVerificationError("无法读取会话头部"),
     "multiple-search-results": lambda: ChatVerificationError("搜索结果不唯一"),
-    "uia-unavailable": lambda: UIAutomationUnavailableError("UI Automation 不可用"),
-    "verify-unexpected": lambda: ValueError("模拟未知异常：COM 对象返回意外类型"),
+    "verify-unexpected": lambda: ValueError("模拟未知异常"),
 }
 
 _SEND_EXCEPTIONS = {

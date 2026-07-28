@@ -82,8 +82,8 @@
 
         <div class="flex items-end gap-4">
           <div>
-            <label class="block text-sm font-medium text-gray-600 mb-1">倒计时天数</label>
-            <input type="number" x-model.number="form.countdown_days" min="1" max="30" class="border rounded px-3 py-2 text-sm w-24">
+            <label class="block text-sm font-medium text-gray-600 mb-1">触发时间</label>
+            <input type="datetime-local" x-model="form.trigger_at" class="border rounded px-3 py-2 text-sm w-60">
             <div class="text-xs text-gray-400 mt-1">预计触发：<span x-text="triggerPreview"></span></div>
           </div>
           <button @click="submit()" :disabled="submitting || !canSubmit" class="bg-green-600 text-white px-5 py-2 rounded text-sm font-medium disabled:opacity-50">

@@ -98,7 +98,21 @@ def create_dispatch_router() -> APIRouter:
             )
 
         now = datetime.now(timezone.utc)
-        trigger_at = now + timedelta(days=body.countdown_days)
+        if body.trigger_at:
+            try:
+                trigger_dt = datetime.fromisoformat(body.trigger_at.replace("Z", "+00:00"))
+                if trigger_dt.tzinfo is None:
+                    trigger_dt = trigger_dt.replace(tzinfo=timezone.utc)
+                trigger_at_iso = trigger_dt.isoformat()
+            except ValueError:
+                return JSONResponse(
+                    status_code=400,
+                    content={"error": {"code": "INVALID_TRIGGER_AT", "message": "触发时间格式无效"}},
+                )
+        else:
+            trigger_dt = now + timedelta(days=body.countdown_days)
+            trigger_at_iso = trigger_dt.isoformat()
+
         task_id = uuid4().hex
 
         result = create_dispatch_task(
@@ -108,7 +122,7 @@ def create_dispatch_router() -> APIRouter:
             send_codes=codes,
             countdown_days=body.countdown_days,
             created_at=now.isoformat(),
-            trigger_at=trigger_at.isoformat(),
+            trigger_at=trigger_at_iso,
         )
         return result
 

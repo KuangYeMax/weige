@@ -44,7 +44,7 @@
 
           <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6 p-4 bg-gray-50 rounded-lg">
             <div><div class="text-xs text-gray-500">发送编号</div><div class="font-medium" x-text="task.send_codes.join(', ')"></div></div>
-            <div><div class="text-xs text-gray-500">倒计时天数</div><div class="font-medium" x-text="task.countdown_days"></div></div>
+            <div><div class="text-xs text-gray-500">计划天数</div><div class="font-medium" x-text="task.countdown_days + '天'"></div></div>
             <div><div class="text-xs text-gray-500">触发时间</div><div class="font-medium" x-text="formatTime(task.trigger_at)"></div></div>
             <div><div class="text-xs text-gray-500">创建时间</div><div class="font-medium" x-text="formatTime(task.created_at)"></div></div>
             <div class="col-span-2 md:col-span-3"><div class="text-xs text-gray-500">失败原因</div><div class="font-medium text-red-700" x-text="task.fail_reason || '—'"></div></div>

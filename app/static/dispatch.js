@@ -3,7 +3,7 @@ function dispatchApp() {
     codeMap: {},
     codeInput: '',
     batchInput: '',
-    form: { wx_remark: '', send_codes: [], countdown_days: 3 },
+    form: { wx_remark: '', send_codes: [], trigger_at: '' },
     submitting: false,
     formError: '',
     formSuccess: '',
@@ -24,9 +24,11 @@ function dispatchApp() {
     },
 
     get triggerPreview() {
-      const d = new Date();
-      d.setDate(d.getDate() + (this.form.countdown_days || 3));
-      return d.toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+      if (!this.form.trigger_at) return '—';
+      try {
+        const d = new Date(this.form.trigger_at);
+        return d.toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+      } catch { return this.form.trigger_at; }
     },
 
     get filteredTasks() {
@@ -54,8 +56,24 @@ function dispatchApp() {
       await this.loadCodeMap();
       await this.loadTasks();
       await this.loadSettings();
+      this._initTriggerAt();
       setInterval(() => this.loadTasks(), 4000);
       setInterval(() => this.loadSettings(), 10000);
+    },
+
+    _initTriggerAt() {
+      this.form.trigger_at = this._defaultTriggerAt();
+    },
+
+    _defaultTriggerAt() {
+      const d = new Date();
+      d.setDate(d.getDate() + 3);
+      return this._toDatetimeLocal(d);
+    },
+
+    _toDatetimeLocal(d) {
+      const pad = n => String(n).padStart(2, '0');
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
     },
 
     async loadSettings() {
@@ -148,12 +166,12 @@ function dispatchApp() {
         const payload = {
           wx_remark: this.form.wx_remark.trim(),
           send_codes: this.form.send_codes.map(s => s.code),
-          countdown_days: this.form.countdown_days,
+          trigger_at: new Date(this.form.trigger_at).toISOString(),
         };
         const res = await fetch('/api/dispatch', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
         if (!res.ok) { const e = await res.json(); this.formError = e.error?.message || '提交失败'; return; }
         this.formSuccess = '登记成功';
-        this.form = { wx_remark: '', send_codes: [], countdown_days: 3 };
+        this.form = { wx_remark: '', send_codes: [], trigger_at: this._defaultTriggerAt() };
         this.verifyResult = 'untested';
         await this.loadTasks();
       } catch { this.formError = '网络错误'; }

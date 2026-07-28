@@ -249,5 +249,6 @@ function dispatchApp() {
 
     formatTime(iso) { return window._formatTime(iso); },
     badgeClass(s) { return window._badgeClass(s); },
+    statusLabel(s) { return window._statusLabel(s); },
   };
 }

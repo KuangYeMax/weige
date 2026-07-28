@@ -113,7 +113,7 @@
             <div class="p-4 hover:bg-gray-50">
               <div class="flex items-center justify-between">
                 <a :href="`/dispatch/${task.task_id}`" class="flex items-center gap-3 min-w-0 flex-1 no-underline text-gray-900">
-                  <span class="status-badge" :class="badgeClass(task.status)" x-text="task.status" :title="task.fail_reason || ''"></span>
+                  <span class="status-badge" :class="badgeClass(task.status)" x-text="statusLabel(task.status)" :title="task.fail_reason || ''"></span>
                   <span class="font-medium truncate" x-text="task.wx_remark"></span>
                   <span class="text-xs text-gray-500 hidden sm:inline" x-text="task.send_codes.join(', ')"></span>
                 </a>

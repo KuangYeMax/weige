@@ -67,7 +67,7 @@
           <template x-for="t in pendingSendTasks" :key="t.task_id">
             <a :href="`/dispatch/${t.task_id}`" class="flex items-center justify-between p-3 bg-white border rounded-lg hover:shadow-sm no-underline text-gray-900 transition">
               <div class="flex items-center gap-3">
-                <span class="status-badge" :class="badgeClass(t.status)" x-text="t.status"></span>
+                <span class="status-badge" :class="badgeClass(t.status)" x-text="statusLabel(t.status)"></span>
                 <span class="text-sm font-medium" x-text="t.wx_remark"></span>
                 <span class="text-xs text-gray-500" x-text="t.send_codes.join(', ')"></span>
               </div>
@@ -87,7 +87,7 @@
           <template x-for="t in alertTasks" :key="t.task_id">
             <a :href="`/dispatch/${t.task_id}`" class="flex items-center justify-between p-3 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 no-underline text-gray-900">
               <div class="flex items-center gap-3">
-                <span class="status-badge" :class="badgeClass(t.status)" x-text="t.status"></span>
+                <span class="status-badge" :class="badgeClass(t.status)" x-text="statusLabel(t.status)"></span>
                 <span class="text-sm font-medium" x-text="t.wx_remark"></span>
                 <span class="text-xs text-gray-500" x-text="t.send_codes.join(', ')"></span>
               </div>
@@ -199,6 +199,7 @@
         ).sort((a, b) => new Date(a.trigger_at) - new Date(b.trigger_at));
       },
       badgeClass(status) { return window._badgeClass(status); },
+      statusLabel(status) { return window._statusLabel(status); },
       formatTime(iso) { return window._formatTime(iso); },
       async uploadProduct(event) {
         const file = event.target.files[0];

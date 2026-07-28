@@ -39,7 +39,7 @@
               <h1 class="text-2xl font-bold" x-text="task.wx_remark"></h1>
               <p class="text-sm text-gray-500 mt-1">Task ID: <code class="text-xs bg-gray-100 px-1 rounded" x-text="task.task_id"></code></p>
             </div>
-            <span class="status-badge text-base px-3 py-1" :class="badgeClass(task.status)" x-text="task.status"></span>
+            <span class="status-badge text-base px-3 py-1" :class="badgeClass(task.status)" x-text="statusLabel(task.status)"></span>
           </div>
 
           <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6 p-4 bg-gray-50 rounded-lg">
@@ -56,7 +56,7 @@
               <div class="border rounded-lg p-4 mb-4">
                 <div class="flex items-center gap-3 mb-3 flex-wrap">
                   <span class="font-bold" x-text="r.code"></span>
-                  <span class="status-badge" :class="badgeClass(r.status)" x-text="r.status"></span>
+                  <span class="status-badge" :class="badgeClass(r.status)" x-text="statusLabel(r.status)"></span>
                   <span class="text-xs px-2 py-0.5 rounded" :class="r.content_source === 'fallback' ? 'bg-amber-100 text-amber-800' : 'bg-blue-100 text-blue-800'" x-text="r.content_source === 'fallback' ? 'Fallback 文案' : 'AI 生成文案'"></span>
                   <span class="text-xs text-gray-500" x-text="`${r.provider} / ${r.model}`"></span>
                 </div>
@@ -164,6 +164,7 @@
       },
       formatTime(iso) { return window._formatTime(iso); },
       badgeClass(s) { return window._badgeClass(s); },
+      statusLabel(s) { return window._statusLabel(s); },
       async confirmSent() {
         const r = await fetch(`/api/dispatch/${this.task.task_id}/confirm-sent`, {method:'POST'});
         if (r.ok) { this.showConfirmSentDialog = false; await this.refresh(this.task.task_id); }

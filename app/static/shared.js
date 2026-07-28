@@ -14,6 +14,22 @@ window._badgeClass = function(status) {
   return 'status-badge ' + (map[status] || 'badge-pending');
 };
 
+window._statusLabel = function(status) {
+  const map = {
+    'pending': '待发送',
+    'generating': '生成中',
+    'ready': '就绪',
+    'sending': '发送中',
+    'awaiting_confirmation': '待人工确认',
+    'needs_review': '需要复核',
+    'dry_run_complete': '模拟完成',
+    'sent': '已发送',
+    'failed': '发送失败',
+    'abandoned': '已放弃',
+  };
+  return map[status] || status;
+};
+
 window._formatTime = function(iso) {
   if (!iso) return '—';
   try {

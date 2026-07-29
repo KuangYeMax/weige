@@ -21,6 +21,7 @@ from app.services.wechat.win32 import (
     wait_idle,
     click,
     send_key,
+    ensure_wechat_clear,
 )
 from app.services.wechat.uia import ChatVerificationResult
 
@@ -86,25 +87,36 @@ def send(remark: str, text: str, images: list[str], settings: Settings) -> None:
     hwnd, rect = _prepare_wechat_window()
     _search_and_open(hwnd, rect, remark, settings)
 
+    popup_timeout = float(getattr(settings, "wechat_popup_wait_timeout", 30.0))
+    popup_interval = float(getattr(settings, "wechat_popup_interval", 2.0))
+
     for p in images:
         if not os.path.isfile(p):
             raise FileNotFoundError(f"发送图片不存在: {p}")
         input_x, input_y = _resolve_input_area(rect, settings)
+        # 弹窗守卫：传入点击坐标，同时检查键盘焦点 + 视觉遮挡
+        ensure_wechat_clear(hwnd, popup_timeout, popup_interval, click_point=(input_x, input_y))
         click(rect, input_x - rect[0], input_y - rect[1])
         time.sleep(0.2)
         clip_set_image(p)
         send_key("ctrl,v")
         time.sleep(1.5)
+        # 弹窗守卫：alt+s 发送前再次确认（坐标同上，输入区不变）
+        ensure_wechat_clear(hwnd, popup_timeout, popup_interval, click_point=(input_x, input_y))
         send_key("alt,s")
         _random_delay(settings)
 
     if text:
         input_x, input_y = _resolve_input_area(rect, settings)
+        # 弹窗守卫：输入文本前检查 + 视觉遮挡检测
+        ensure_wechat_clear(hwnd, popup_timeout, popup_interval, click_point=(input_x, input_y))
         click(rect, input_x - rect[0], input_y - rect[1])
         time.sleep(0.2)
         clip_set_text(text)
         send_key("ctrl,v")
         time.sleep(0.2)
+        # 弹窗守卫：发送前最后确认
+        ensure_wechat_clear(hwnd, popup_timeout, popup_interval, click_point=(input_x, input_y))
         send_key("alt,s")
         _random_delay(settings)
 

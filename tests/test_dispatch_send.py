@@ -572,11 +572,14 @@ def test_process_send_rejects_missing_artifact_before_sender(settings, monkeypat
 
 
 @pytest.mark.parametrize(
-    "results",
-    [[], [{"code": "code1", "status": "skipped"}]],
+    "results, expect_reason",
+    [
+        ([], "SEND_ARTIFACT_MISSING"),
+        ([{"code": "code1", "status": "skipped"}], "SEND_INCOMPLETE: unsent=code1"),
+    ],
     ids=["empty", "no-ready-results"],
 )
-def test_process_send_rejects_manifest_without_ready_results(settings, results):
+def test_process_send_rejects_manifest_without_ready_results(settings, results, expect_reason):
     task_id = uuid4().hex
     task_dir, _ = _ready_task_with_artifacts(settings, task_id)
     (task_dir / "manifest.json").write_text(json.dumps({"results": results}), encoding="utf-8")
@@ -584,7 +587,7 @@ def test_process_send_rejects_manifest_without_ready_results(settings, results):
     assert process_send_tasks(settings) == 1
     task = list_dispatch_tasks(settings.db_path)[0]
     assert task["status"] == "needs_review"
-    assert task["fail_reason"] == "SEND_ARTIFACT_MISSING"
+    assert task["fail_reason"] == expect_reason
 
 
 def test_process_send_rejects_empty_image_before_sender(settings, monkeypatch):

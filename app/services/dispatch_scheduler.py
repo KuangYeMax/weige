@@ -552,6 +552,18 @@ def _ready_send_items(task_dir: Path, manifest: dict) -> list[tuple[dict, str, s
         if not text.strip() or image_size <= 0:
             return None
         items.append((result, code, text, image_path))
+
+    if not items:
+        # 有已发送项但没有 ready 项时，检查是否有从未发送过的遗留项。
+        # 若有（如 needs_review / ok / failed 等），说明任务未完成，
+        # 不应标 sent —— 返回 None 让上层走 needs_review。
+        unsent = [
+            r for r in results
+            if isinstance(r, dict)
+            and r.get("status") not in ("ready", "local_submitted")
+        ]
+        if unsent:
+            return None
     return items or ([] if has_local_submissions else None)
 
 
@@ -593,7 +605,17 @@ def _send_ready_task(settings: Settings, task: dict) -> None:
 
     send_items = _ready_send_items(task_dir, manifest)
     if send_items is None:
-        mark_dispatch_task_needs_review(settings.db_path, task_id, "SEND_ARTIFACT_MISSING")
+        unsent_codes = sorted(
+            r.get("code", "?")
+            for r in manifest.get("results", [])
+            if isinstance(r, dict) and r.get("status") not in ("ready", "local_submitted")
+        )
+        reason = (
+            f"SEND_INCOMPLETE: unsent={','.join(unsent_codes)}"
+            if unsent_codes
+            else "SEND_ARTIFACT_MISSING"
+        )
+        mark_dispatch_task_needs_review(settings.db_path, task_id, reason)
         return
 
     if not send_items:

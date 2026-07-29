@@ -128,6 +128,10 @@ class Settings(BaseSettings):
     wechat_send_interval_min: float = 1.0
     wechat_send_interval_max: float = 3.0
 
+    # ── 弹窗阻塞处理：发送过程中若微信被弹窗遮挡，等待其消失；超时则中止 ──
+    wechat_popup_wait_timeout: float = 30.0
+    wechat_popup_interval: float = 2.0
+
     # ── 开场语：待发任务触发发送时，最先发给客户的一段话；留空则不发 ──
     wechat_opening_text: str = ""
 

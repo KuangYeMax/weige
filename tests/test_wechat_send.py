@@ -50,6 +50,7 @@ def _mock_windows(monkeypatch):
     monkeypatch.setattr(sender, "wait_idle", lambda: None)
     monkeypatch.setattr(sender, "force_foreground", lambda _hwnd: None)
     monkeypatch.setattr(sender, "hide_overlays", lambda _hwnd: None)
+    monkeypatch.setattr(sender, "ensure_wechat_clear", lambda *a, **kw: None)
 
 
 def test_verify_remark_searches_and_opens_chat(monkeypatch):

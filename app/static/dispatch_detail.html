@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>同物景 · 派发详情</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
+  <link rel="stylesheet" href="/static/shared.css">
+</head>
+<body class="bg-gray-50">
+  <div x-data="dispatchDetail()" x-init="init()" class="min-h-screen">
+
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <a href="/dashboard" class="sidebar-brand">
+        <span class="brand-icon">同</span>
+        <span>同物景</span>
+      </a>
+      <nav class="sidebar-nav">
+        <a href="/dashboard" class="nav-link">告警台</a>
+        <a href="/products" class="nav-link">产品库</a>
+        <a href="/dispatch" class="nav-link active">待发列表</a>
+        <a href="/logs" class="nav-link">发送日志</a>
+        <a href="/settings" class="nav-link">设置</a>
+      </nav>
+    </aside>
+
+    <main class="main-content">
+
+      <div x-show="!task" class="text-center py-12 text-gray-500">加载中...</div>
+
+      <template x-if="task">
+        <div>
+          <div class="flex items-start justify-between mb-6">
+            <div>
+              <a href="/dispatch" class="text-sm text-gray-500 hover:text-gray-700 mb-2 inline-block">&larr; 返回列表</a>
+              <h1 class="text-2xl font-bold" x-text="task.wx_remark"></h1>
+              <p class="text-sm text-gray-500 mt-1">Task ID: <code class="text-xs bg-gray-100 px-1 rounded" x-text="task.task_id"></code></p>
+            </div>
+            <span class="status-badge text-base px-3 py-1" :class="badgeClass(task.status)" x-text="statusLabel(task.status)"></span>
+          </div>
+
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6 p-4 bg-gray-50 rounded-lg">
+            <div><div class="text-xs text-gray-500">发送编号</div><div class="font-medium" x-text="task.send_codes.join(', ')"></div></div>
+            <div><div class="text-xs text-gray-500">计划天数</div><div class="font-medium" x-text="task.countdown_days + '天'"></div></div>
+            <div><div class="text-xs text-gray-500">触发时间</div><div class="font-medium" x-text="formatTime(task.trigger_at)"></div></div>
+            <div><div class="text-xs text-gray-500">创建时间</div><div class="font-medium" x-text="formatTime(task.created_at)"></div></div>
+            <div class="col-span-2 md:col-span-3"><div class="text-xs text-gray-500">失败原因</div><div class="font-medium text-red-700" x-text="task.fail_reason || '—'"></div></div>
+          </div>
+
+          <section class="mb-8" x-show="manifest">
+            <h2 class="text-lg font-bold mb-3">生成产物（按编号）</h2>
+            <template x-for="r in (manifest ? manifest.results : [])" :key="r.code">
+              <div class="border rounded-lg p-4 mb-4">
+                <div class="flex items-center gap-3 mb-3 flex-wrap">
+                  <span class="font-bold" x-text="r.code"></span>
+                  <span class="status-badge" :class="badgeClass(r.status)" x-text="statusLabel(r.status)"></span>
+                  <span class="text-xs px-2 py-0.5 rounded" :class="r.content_source === 'fallback' ? 'bg-amber-100 text-amber-800' : 'bg-blue-100 text-blue-800'" x-text="r.content_source === 'fallback' ? 'Fallback 文案' : 'AI 生成文案'"></span>
+                  <span class="text-xs text-gray-500" x-text="`${r.provider} / ${r.model}`"></span>
+                </div>
+                <div class="grid md:grid-cols-2 gap-4">
+                  <div>
+                    <template x-if="r.image_url"><img :src="r.image_url" class="w-full rounded border cursor-pointer max-h-80 object-contain bg-gray-50" @click="lightboxUrl = r.image_url"></template>
+                    <template x-if="!r.image_url"><div class="w-full h-40 bg-gray-100 rounded flex items-center justify-center text-gray-400 text-sm">无图片</div></template>
+                  </div>
+                  <div>
+                    <div class="text-xs text-gray-500 mb-1">content.txt</div>
+                    <pre class="whitespace-pre-wrap text-sm bg-gray-50 p-3 rounded border max-h-60 overflow-y-auto" x-text="r.content_text || '—'"></pre>
+                  </div>
+                </div>
+                <div class="flex gap-2 mt-3 flex-wrap">
+                  <button disabled class="px-3 py-1 text-xs border rounded text-gray-400 cursor-not-allowed" title="待设计并发锁后开放">换图（接口待补）</button>
+                  <button disabled class="px-3 py-1 text-xs border rounded text-gray-400 cursor-not-allowed" title="待设计并发锁后开放">重新生成（接口待补）</button>
+                  <button disabled class="px-3 py-1 text-xs border rounded text-gray-400 cursor-not-allowed" title="待设计并发锁后开放">编辑文案（接口待补）</button>
+                  <button disabled class="px-3 py-1 text-xs border rounded text-gray-400 cursor-not-allowed" title="待设计并发锁后开放">跳过编号（接口待补）</button>
+                </div>
+              </div>
+            </template>
+            <div x-show="!manifest || !manifest.results || manifest.results.length === 0" class="text-sm text-gray-500 p-4 bg-gray-50 rounded">尚未生成产物</div>
+          </section>
+
+          <section x-show="task.status === 'needs_review'" class="mb-8 p-4 border-2 border-red-400 rounded-lg bg-red-50" x-cloak>
+            <h3 class="font-bold text-red-900 mb-2">需要人工复核</h3>
+            <div class="text-sm text-red-800 mb-3"><strong>失败原因：</strong><span x-text="task.fail_reason || '—'"></span></div>
+            <div class="flex gap-3">
+              <button @click="retryAfterReview()" class="px-4 py-2 bg-blue-600 text-white rounded font-medium hover:bg-blue-700">人工复核后重投</button>
+              <button @click="showAbandonDialog = true" class="px-4 py-2 bg-gray-600 text-white rounded font-medium hover:bg-gray-700">放弃这条记录</button>
+            </div>
+            <p class="text-xs text-gray-500 mt-2">重投会重新做好友校验，不会跳过任何校验</p>
+          </section>
+
+          <section x-show="task.status === 'failed'" class="mb-8 p-4 border-2 border-red-300 rounded-lg bg-red-50" x-cloak>
+            <h3 class="font-bold text-red-900 mb-2">任务失败</h3>
+            <div class="text-sm text-red-800 mb-3"><strong>失败原因：</strong><span x-text="task.fail_reason || '—'"></span></div>
+            <button @click="showAbandonDialog = true" class="px-4 py-2 bg-gray-600 text-white rounded font-medium hover:bg-gray-700">放弃这条记录</button>
+          </section>
+
+          <section class="mb-8">
+            <h2 class="text-lg font-bold mb-3 text-gray-400">状态时间线</h2>
+            <div class="p-4 bg-gray-50 rounded border border-dashed border-gray-300 text-sm text-gray-400">历史记录待补 — 本轮不建状态历史表</div>
+          </section>
+
+        </div>
+      </template>
+
+      <div x-show="lightboxUrl" @click="lightboxUrl = null" class="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-8 cursor-pointer" x-cloak>
+        <img :src="lightboxUrl" class="max-w-full max-h-full rounded shadow-2xl" @click.stop>
+      </div>
+
+      <div x-show="showAbandonDialog" class="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" x-cloak>
+        <div class="bg-white rounded-lg p-6 max-w-md w-full shadow-xl" @click.stop>
+          <h3 class="font-bold text-lg mb-3 text-red-800">二次确认：放弃记录</h3>
+          <p class="text-sm text-gray-700 mb-4">放弃后该记录将标记为 abandoned，不再参与调度。此操作不可撤销。</p>
+          <div class="flex justify-end gap-3">
+            <button @click="showAbandonDialog = false" class="px-4 py-2 border rounded">取消</button>
+            <button @click="abandon()" class="px-4 py-2 bg-red-600 text-white rounded font-medium">确认放弃</button>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script src="/static/shared.js"></script>
+  <script>
+  function dispatchDetail() {
+    return {
+      task: null, manifest: null, settings: null,
+      lightboxUrl: null, showAbandonDialog: false,
+      async init() {
+        const taskId = window.location.pathname.split('/').pop();
+        await this.refresh(taskId);
+        setInterval(() => this.refresh(taskId), 4000);
+      },
+      async refresh(taskId) {
+        const [d, s] = await Promise.all([fetch(`/api/dispatch/${taskId}`), fetch('/api/settings')]);
+        if (!d.ok) return;
+        const data = await d.json();
+        this.task = data; this.manifest = data.manifest || null;
+        this.settings = await s.json();
+      },
+      formatTime(iso) { return window._formatTime(iso); },
+      badgeClass(s) { return window._badgeClass(s); },
+      statusLabel(s) { return window._statusLabel(s); },
+      async retryAfterReview() {
+        const r = await fetch(`/api/dispatch/${this.task.task_id}/retry-after-review`, {method:'POST'});
+        if (r.ok) await this.refresh(this.task.task_id);
+        else { const d = await r.json(); alert(d.error?.message || '失败'); }
+      },
+      async abandon() {
+        const r = await fetch(`/api/dispatch/${this.task.task_id}/abandon`, {method:'POST'});
+        if (r.ok) { this.showAbandonDialog = false; await this.refresh(this.task.task_id); }
+        else { const d = await r.json(); alert(d.error?.message || '失败'); }
+      },
+    };
+  }
+  </script>
+</body>
+</html>

@@ -1,0 +1,21 @@
+.env
+.venv/
+__pycache__/
+.pytest_cache/
+*.py[cod]
+storage/uploads/*
+storage/generated/*
+storage/metadata/*
+storage/dispatch/*
+!storage/uploads/.gitkeep
+!storage/generated/.gitkeep
+!storage/metadata/.gitkeep
+!storage/dispatch/.gitkeep
+.playwright-mcp/
+storage/app.db
+# feat/uia-sender 运行时产物（诊断截图/发送留证/自检报告/发送日志）
+storage/smoke_diag/
+storage/send_proofs/
+storage/send_dryrun/
+storage/health_report.json
+storage/send_log.jsonl

@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>同物景 · 产品详情</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
+  <link rel="stylesheet" href="/static/shared.css">
+</head>
+<body class="bg-gray-50">
+  <div x-data="productDetail()" x-init="init()">
+
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <a href="/dashboard" class="sidebar-brand">
+        <span class="brand-icon">同</span>
+        <span>同物景</span>
+      </a>
+      <nav class="sidebar-nav">
+        <a href="/dashboard" class="nav-link">告警台</a>
+        <a href="/products" class="nav-link active">产品库</a>
+        <a href="/dispatch" class="nav-link">待发列表</a>
+        <a href="/logs" class="nav-link">发送日志</a>
+        <a href="/settings" class="nav-link">设置</a>
+      </nav>
+    </aside>
+
+    <div class="main-content">
+      <a href="/products" class="text-sm text-gray-500 hover:text-gray-700 mb-4 inline-block">&larr; 返回产品库</a>
+
+      <div x-show="!product" class="text-center py-12 text-gray-500">加载中...</div>
+
+      <template x-if="product">
+        <div>
+          <h1 class="text-2xl font-bold mb-6" x-text="product.name || '未命名产品'"></h1>
+
+          <div class="grid md:grid-cols-2 gap-8 mb-8">
+            <!-- Left: Image -->
+            <div>
+              <template x-if="product.original_image_url">
+                <img :src="product.original_image_url" class="w-full rounded-lg border" :alt="product.name">
+              </template>
+              <template x-if="!product.original_image_url">
+                <div class="w-full h-64 bg-gray-100 rounded-lg flex items-center justify-center text-gray-400">无主图</div>
+              </template>
+            </div>
+            <!-- Right: Codes -->
+            <div>
+              <h3 class="font-semibold mb-3">产品编号</h3>
+              <div class="space-y-2 mb-4">
+                <template x-for="c in product.codes" :key="c.code">
+                  <div class="flex items-center gap-2 p-2 bg-blue-50 rounded">
+                    <span class="font-mono text-sm" x-text="c.code"></span>
+                    <span class="text-xs text-gray-400" x-text="c.created_at ? c.created_at.substring(0,10) : ''"></span>
+                  </div>
+                </template>
+                <div x-show="!product.codes || product.codes.length === 0" class="text-sm text-gray-400">暂无编号</div>
+              </div>
+              <div class="flex items-center gap-2">
+                <input type="text" x-model="newCode" @keydown.enter="addCode()" placeholder="新编号" class="border rounded px-3 py-2 text-sm w-40">
+                <button @click="addCode()" :disabled="addingCode" class="bg-blue-600 text-white text-sm px-3 py-2 rounded disabled:opacity-50">新增</button>
+              </div>
+              <div x-show="codeError" class="text-xs text-red-600 mt-1" x-text="codeError" x-cloak></div>
+            </div>
+          </div>
+
+          <!-- Fact Card -->
+          <section class="mb-8">
+            <h2 class="text-lg font-bold mb-3">事实卡</h2>
+            <template x-if="product.fact_card">
+              <div>
+                <div class="grid grid-cols-2 md:grid-cols-3 gap-3 mb-4">
+                  <div class="p-3 border rounded"><div class="text-xs text-gray-500">商品名称</div><input x-model="factCard['商品名称']" @input="syncFactJson()" class="w-full text-sm font-medium border-0 p-0 focus:ring-0 bg-transparent"></div>
+                  <div class="p-3 border rounded"><div class="text-xs text-gray-500">品类</div><input x-model="factCard['商品品类']" @input="syncFactJson()" class="w-full text-sm font-medium border-0 p-0 focus:ring-0 bg-transparent"></div>
+                  <div class="p-3 border rounded"><div class="text-xs text-gray-500">置信度</div><input x-model="factCard['识别置信度']" @input="syncFactJson()" class="w-full text-sm font-medium border-0 p-0 focus:ring-0 bg-transparent"></div>
+                  <div class="p-3 border rounded"><div class="text-xs text-gray-500">主体名称</div><input x-model="factCard['主体名称']" @input="syncFactJson()" placeholder="如：马/牛/花瓶" class="w-full text-sm font-medium border-0 p-0 focus:ring-0 bg-transparent"></div>
+                  <div class="p-3 border rounded"><div class="text-xs text-gray-500">主体数量</div><input type="number" x-model="factCard['主体数量']" @input="syncFactJson()" placeholder="数不清留空" class="w-full text-sm font-medium border-0 p-0 focus:ring-0 bg-transparent"></div>
+                  <div class="p-3 border rounded flex items-center gap-2"><input type="checkbox" x-model="factCard['主体数量待确认']" @change="syncFactJson()" class="rounded mt-1"><div><div class="text-xs text-gray-500">数量待确认</div><div class="text-xs text-gray-400">回填值，核对后取消勾选</div></div></div>
+                  <div class="p-3 border rounded col-span-2 md:col-span-3"><div class="text-xs text-gray-500">整体特征</div><textarea x-model="factCard['整体特征']" @input="syncFactJson()" class="w-full text-sm border-0 p-0 focus:ring-0 bg-transparent resize-none" rows="2"></textarea></div>
+                </div>
+                <details class="mb-3">
+                  <summary class="cursor-pointer text-sm text-blue-600">完整 JSON 编辑</summary>
+                  <textarea x-model="factJson" @input="syncCardFromJson()" class="w-full mt-2 text-xs font-mono border rounded p-3 h-48 resize-y"></textarea>
+                </details>
+                <div class="flex gap-2">
+                  <button @click="saveFactCard()" :disabled="savingFact" class="bg-green-600 text-white px-4 py-2 text-sm rounded disabled:opacity-50" x-text="savingFact ? '保存中...' : '保存事实卡'"></button>
+                </div>
+                <div x-show="factError" class="text-xs text-red-600 mt-2" x-text="factError" x-cloak></div>
+                <div x-show="factSuccess" class="text-xs text-green-600 mt-2" x-text="factSuccess" x-cloak></div>
+              </div>
+            </template>
+            <template x-if="!product.fact_card">
+              <div class="text-sm text-gray-400 p-4 bg-gray-50 rounded">无事实卡数据</div>
+            </template>
+          </section>
+
+          <!-- Prompt Area (disabled) -->
+          <section class="mb-8">
+            <h2 class="text-lg font-bold mb-3 text-gray-400">提示词（prompt_image / prompt_text）</h2>
+            <div class="p-4 bg-gray-50 rounded border border-dashed border-gray-300 text-sm text-gray-400">
+              字段待补 — 后端 product 表尚无 prompt_image / prompt_text 字段，本轮不加
+            </div>
+          </section>
+        </div>
+      </template>
+    </div>
+  </div>
+
+  <script src="/static/shared.js"></script>
+  <script>
+  function productDetail() {
+    return {
+      product: null, newCode: '', addingCode: false, codeError: '',
+      factCard: {}, factJson: '', savingFact: false, factError: '', factSuccess: '',
+      async init() {
+        const id = window.location.pathname.split('/').filter(Boolean).pop();
+        try {
+          const res = await fetch(`/api/products/${id}`);
+          if (!res.ok) { alert('产品不存在'); return; }
+          this.product = await res.json();
+          if (this.product.fact_card) {
+            this.factCard = JSON.parse(JSON.stringify(this.product.fact_card));
+            this.factJson = JSON.stringify(this.product.fact_card, null, 2);
+          }
+        } catch (e) { console.error(e); }
+      },
+      async addCode() {
+        if (!this.newCode.trim()) return;
+        this.addingCode = true; this.codeError = '';
+        try {
+          const res = await fetch(`/api/products/${this.product.product_id}/codes`, {
+            method: 'POST', headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({ code: this.newCode.trim() }),
+          });
+          if (!res.ok) { const e = await res.json(); this.codeError = e.error?.message || '失败'; return; }
+          const c = await res.json();
+          this.product.codes.push(c);
+          this.newCode = '';
+        } catch { this.codeError = '网络错误'; }
+        finally { this.addingCode = false; }
+      },
+      async saveFactCard() {
+        this.savingFact = true; this.factError = ''; this.factSuccess = '';
+        let card;
+        try { card = JSON.parse(this.factJson); } catch { this.factError = 'JSON 格式错误'; this.savingFact = false; return; }
+        try {
+          const res = await fetch(`/api/products/${this.product.product_id}/fact-card`, {
+            method: 'POST', headers: {'Content-Type':'application/json'},
+            body: JSON.stringify(card),
+          });
+          if (!res.ok) { const e = await res.json(); this.factError = e.error?.message || '保存失败'; return; }
+          this.factSuccess = '已保存';
+          this.factCard = card;
+        } catch { this.factError = '网络错误'; }
+        finally { this.savingFact = false; }
+      },
+      // 表单字段改动即时同步到完整 JSON 编辑框（保存以 factJson 为准）。
+      // 同时把「主体数量」规整为 number 或 null，避免空串/非数字混入。
+      syncFactJson() {
+        const card = JSON.parse(JSON.stringify(this.factCard));
+        let c = card['主体数量'];
+        if (c === '' || c === null || c === undefined) {
+          card['主体数量'] = null;
+        } else {
+          c = Number(c);
+          card['主体数量'] = isNaN(c) ? null : c;
+        }
+        this.factCard['主体数量'] = card['主体数量'];
+        this.factJson = JSON.stringify(card, null, 2);
+      },
+      // 反向：完整 JSON 编辑框改动同步回表单对象（合法时）。
+      syncCardFromJson() {
+        try { this.factCard = JSON.parse(this.factJson); } catch (e) {}
+      },
+    };
+  }
+  </script>
+</body>
+</html>

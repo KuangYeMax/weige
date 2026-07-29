@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>同物景 · 待发列表</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
+  <link rel="stylesheet" href="/static/shared.css">
+</head>
+<body class="bg-gray-50">
+  <div x-data="dispatchApp()" x-init="init()">
+
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <a href="/dashboard" class="sidebar-brand">
+        <span class="brand-icon">同</span>
+        <span>同物景</span>
+      </a>
+      <nav class="sidebar-nav">
+        <a href="/dashboard" class="nav-link">告警台</a>
+        <a href="/products" class="nav-link">产品库</a>
+        <a href="/dispatch" class="nav-link active">待发列表</a>
+        <a href="/logs" class="nav-link">发送日志</a>
+        <a href="/settings" class="nav-link">设置</a>
+      </nav>
+    </aside>
+
+    <!-- Main -->
+    <div class="main-content">
+
+      <!-- Registration Form -->
+      <div class="bg-white rounded-lg shadow p-6 mb-8">
+        <h2 class="text-lg font-semibold text-gray-700 mb-4">新建待发记录</h2>
+
+        <!-- Batch Input -->
+        <div class="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+          <label class="block text-sm font-medium text-blue-800 mb-2">快捷输入</label>
+          <div class="flex gap-2">
+            <textarea x-model="batchInput" rows="2" placeholder="粘贴内容，格式: 备注名 编号1,编号2,编号3&#10;例如: 张三 001,002,003" class="flex-1 border rounded px-3 py-2 text-sm focus:ring-1 focus:ring-blue-400 resize-none"></textarea>
+            <button @click="applyBatchInput()" :disabled="!batchInput.trim()" class="bg-blue-600 text-white px-4 py-2 rounded text-sm font-medium hover:bg-blue-700 disabled:opacity-50 self-end shrink-0">确定</button>
+          </div>
+          <div class="text-xs text-blue-500 mt-1">支持格式：<code>备注名 编号1,编号2</code> 或 <code>备注名 编号1、编号2</code></div>
+        </div>
+
+        <div class="mb-4">
+          <label class="block text-sm font-medium text-gray-600 mb-1">微信好友备注名 <span class="text-red-500">*</span></label>
+          <div class="flex gap-2">
+            <input type="text" x-model="form.wx_remark" placeholder="买家微信备注名" class="flex-1 border rounded px-3 py-2 text-sm focus:ring-1 focus:ring-blue-400">
+            <button @click="verifyRemark()" :disabled="!form.wx_remark.trim() || verifying" class="px-3 py-2 text-xs border rounded font-medium hover:bg-gray-50 disabled:opacity-50" x-text="verifying ? '校验中...' : '试定位'"></button>
+          </div>
+          <div x-show="verifyResult === 'pass'" class="text-xs text-green-600 mt-1" x-cloak>通过 — 头部名称: <span x-text="verifyHeaderName"></span></div>
+          <div x-show="verifyResult === 'fail'" class="text-xs text-red-600 mt-1" x-cloak>未通过 — <span x-text="verifyFailReason"></span></div>
+          <div x-show="verifyResult === 'untested'" class="text-xs text-gray-400 mt-1" x-cloak>未测试</div>
+        </div>
+
+        <div class="mb-4">
+          <label class="block text-sm font-medium text-gray-600 mb-1">发送编号（1-4 个） <span class="text-red-500">*</span></label>
+          <div class="flex items-center gap-2 mb-2">
+            <input type="text" x-model="codeInput" @keydown.enter.prevent="addSendCode()" placeholder="输入编号后回车" class="border rounded px-3 py-2 text-sm w-60 focus:ring-1 focus:ring-blue-400">
+            <button @click="addSendCode()" :disabled="form.send_codes.length >= 4" class="bg-blue-600 text-white text-sm px-3 py-2 rounded disabled:opacity-50">添加</button>
+          </div>
+          <div class="flex flex-wrap gap-2">
+            <template x-for="(item, idx) in form.send_codes" :key="idx">
+              <div class="flex items-center gap-2 bg-gray-50 border rounded px-3 py-2" :class="item.valid ? 'border-green-300' : 'border-red-300'">
+                <template x-if="item.valid && item.image_path">
+                  <img :src="'/storage/' + item.image_path" class="w-10 h-10 rounded object-cover">
+                </template>
+                <template x-if="!item.valid">
+                  <div class="w-10 h-10 rounded bg-red-50 flex items-center justify-center text-xs text-red-400">?</div>
+                </template>
+                <div class="text-sm">
+                  <div class="font-medium" :class="item.valid ? '' : 'text-red-600'" x-text="item.code"></div>
+                  <div class="text-xs" :class="item.valid ? 'text-gray-500' : 'text-red-500'" x-text="item.valid ? item.product_name : '未入库，请先入库'"></div>
+                </div>
+                <button @click="removeSendCode(idx)" class="ml-1 text-gray-400 hover:text-red-500">&times;</button>
+              </div>
+            </template>
+          </div>
+        </div>
+
+        <div class="flex items-end gap-4">
+          <div>
+            <label class="block text-sm font-medium text-gray-600 mb-1">触发时间</label>
+            <input type="datetime-local" x-model="form.trigger_at" class="border rounded px-3 py-2 text-sm w-60">
+            <div class="text-xs text-gray-400 mt-1">预计触发：<span x-text="triggerPreview"></span></div>
+          </div>
+          <button @click="submit()" :disabled="submitting || !canSubmit" class="bg-green-600 text-white px-5 py-2 rounded text-sm font-medium disabled:opacity-50">
+            <span x-text="submitting ? '提交中...' : '登记'"></span>
+          </button>
+        </div>
+        <div x-show="formError" class="mt-3 text-sm text-red-600" x-text="formError" x-cloak></div>
+        <div x-show="formSuccess" class="mt-3 text-sm text-green-600" x-text="formSuccess" x-cloak></div>
+      </div>
+
+      <!-- Filter Bar -->
+      <div class="flex items-center gap-2 mb-4 flex-wrap">
+        <span class="text-sm text-gray-500">筛选:</span>
+        <button @click="filter = ''" class="px-2 py-1 text-xs rounded" :class="filter === '' ? 'bg-gray-800 text-white' : 'bg-gray-100'">全部</button>
+        <button @click="filter = 'needs_action'" class="px-2 py-1 text-xs rounded" :class="filter === 'needs_action' ? 'bg-red-600 text-white' : 'bg-red-50 text-red-700'">需人工</button>
+        <button @click="filter = 'in_progress'" class="px-2 py-1 text-xs rounded" :class="filter === 'in_progress' ? 'bg-blue-600 text-white' : 'bg-blue-50 text-blue-700'">进行中</button>
+        <button @click="filter = 'pending'" class="px-2 py-1 text-xs rounded" :class="filter === 'pending' ? 'bg-gray-600 text-white' : 'bg-gray-100'">等待触发</button>
+        <button @click="filter = 'done'" class="px-2 py-1 text-xs rounded" :class="filter === 'done' ? 'bg-green-600 text-white' : 'bg-green-50 text-green-700'">已完成</button>
+      </div>
+
+      <!-- Task List -->
+      <div class="bg-white rounded-lg shadow">
+        <div x-show="tasksLoading" class="text-center py-8 text-gray-500">加载中...</div>
+        <div x-show="!tasksLoading && filteredTasks.length === 0" class="text-center py-8 text-gray-400">无匹配记录</div>
+        <div x-show="!tasksLoading && filteredTasks.length > 0" class="divide-y">
+          <template x-for="task in filteredTasks" :key="task.task_id">
+            <div class="p-4 hover:bg-gray-50">
+              <div class="flex items-center justify-between">
+                <a :href="`/dispatch/${task.task_id}`" class="flex items-center gap-3 min-w-0 flex-1 no-underline text-gray-900">
+                  <span class="status-badge" :class="badgeClass(task.status)" x-text="statusLabel(task.status)" :title="task.fail_reason || ''"></span>
+                  <span class="font-medium truncate" x-text="task.wx_remark"></span>
+                  <span class="text-xs text-gray-500 hidden sm:inline" x-text="task.send_codes.join(', ')"></span>
+                </a>
+                <div class="flex items-center gap-2 text-xs text-gray-500 shrink-0">
+                  <span x-text="task.fail_reason ? task.fail_reason.substring(0,30) : ''" class="text-red-500 hidden md:inline"></span>
+                  <input type="datetime-local" x-model="task._editTriggerAt" @change="rescheduleTask(task)"
+                    :disabled="task.status === 'generating' || task.status === 'sending'"
+                    class="text-xs border border-gray-300 rounded px-1 py-0.5 w-38 disabled:opacity-40 disabled:cursor-not-allowed">
+                  <button @click.prevent="deleteTask(task)" class="px-2 py-1 text-xs border border-red-200 text-red-600 rounded hover:bg-red-50" :disabled="task.status === 'generating' || task.status === 'sending'">删除</button>
+                </div>
+              </div>
+              <!-- Manifest content (always visible) -->
+              <div class="mt-3 space-y-3 border-t pt-3">
+                <div x-show="task._manifestLoading" class="text-sm text-gray-400">加载中...</div>
+                <template x-if="task._manifest && task._manifest.results">
+                  <div class="space-y-4">
+                    <template x-for="(item, idx) in task._manifest.results" :key="item.code">
+                      <div class="border rounded-lg p-3 bg-gray-50">
+                        <div class="text-sm font-medium text-gray-700 mb-2" x-text="'编号: ' + item.code"></div>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                          <!-- Image -->
+                          <div>
+                            <div class="text-xs text-gray-500 mb-1">好评图</div>
+                            <template x-if="item.image_url">
+                              <img :src="item.image_url" class="w-full max-w-xs rounded border object-cover" style="max-height:200px">
+                            </template>
+                            <template x-if="!item.image_url">
+                              <div class="w-full max-w-xs h-32 rounded border bg-gray-100 flex items-center justify-center text-gray-400 text-xs">未生成</div>
+                            </template>
+                            <button @click="regenerateItem(task, item.code, 'image')" :disabled="item._regenerating" class="mt-2 px-3 py-1 text-xs border rounded hover:bg-blue-50 text-blue-600">
+                              <span x-text="item._regenerating ? '生成中...' : '重新生成图片'"></span>
+                            </button>
+                          </div>
+                          <!-- Review text -->
+                          <div>
+                            <div class="text-xs text-gray-500 mb-1">好评文案</div>
+                            <template x-if="item.content_text">
+                              <div class="text-sm bg-white border rounded p-2 whitespace-pre-wrap" x-text="item.content_text"></div>
+                            </template>
+                            <template x-if="!item.content_text">
+                              <div class="text-sm bg-white border rounded p-2 text-gray-400">未生成</div>
+                            </template>
+                            <button @click="regenerateItem(task, item.code, 'content')" :disabled="item._regenerating" class="mt-2 px-3 py-1 text-xs border rounded hover:bg-blue-50 text-blue-600">
+                              <span x-text="item._regenerating ? '生成中...' : '重新生成文案'"></span>
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </template>
+                  </div>
+                </template>
+                <div x-show="!task._manifestLoading && (!task._manifest || !task._manifest.results || task._manifest.results.length === 0)" class="text-sm text-gray-400">
+                  暂无生成内容（等待触发后自动生成）
+                </div>
+              </div>
+            </div>
+          </template>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/shared.js"></script>
+  <script src="/static/dispatch.js"></script>
+</body>
+</html>

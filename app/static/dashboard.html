@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>同物景 · 告警台</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
+  <link rel="stylesheet" href="/static/shared.css">
+</head>
+<body class="bg-gray-50">
+  <div x-data="dashboard()" x-init="init()" class="min-h-screen">
+
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <a href="/dashboard" class="sidebar-brand">
+        <span class="brand-icon">同</span>
+        <span>同物景</span>
+      </a>
+      <nav class="sidebar-nav">
+        <a href="/dashboard" class="nav-link active">告警台</a>
+        <a href="/products" class="nav-link">产品库</a>
+        <a href="/dispatch" class="nav-link">待发列表</a>
+        <a href="/logs" class="nav-link">发送日志</a>
+        <a href="/settings" class="nav-link">设置</a>
+      </nav>
+    </aside>
+
+    <!-- Main -->
+    <div class="main-content">
+      <!-- WeChat 自检告警条（feat/uia-sender，计划 §7.3）-->
+      <template x-if="wechatHealth && wechatHealth.healthy === false">
+        <div class="mb-4 p-4 bg-red-50 border border-red-300 rounded-lg flex items-start gap-3">
+          <span class="text-red-600 text-xl flex-shrink-0">⚠</span>
+          <div class="flex-1">
+            <div class="text-sm font-bold text-red-800">微信发送层自检未通过，已切换演习模式</div>
+            <div class="text-xs text-red-700 mt-1" x-text="'失败项：' + (wechatHealth.failed_checks || []).join(', ')"></div>
+            <div class="text-xs text-red-600 mt-1 max-h-24 overflow-y-auto" x-text="wechatHealth.details || ''"></div>
+            <div class="text-xs text-gray-500 mt-1" x-text="'上次自检：' + (wechatHealth.checked_at || '—')"></div>
+          </div>
+        </div>
+      </template>
+      <template x-if="wechatHealth && wechatHealth.healthy === true">
+        <div class="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg flex items-center gap-2">
+          <span class="text-green-600">✓</span>
+          <span class="text-sm text-green-800">微信发送层自检通过，可正常发送</span>
+          <span class="text-xs text-gray-500 ml-auto" x-text="'上次自检：' + (wechatHealth.checked_at || '—')"></span>
+        </div>
+      </template>
+
+      <!-- Top action bar -->
+      <div class="flex justify-end mb-4">
+        <label class="bg-green-600 text-white px-4 py-2 rounded text-sm font-medium cursor-pointer hover:bg-green-700">
+          上传产品
+          <input type="file" accept="image/jpeg,image/png,image/webp" class="hidden" @change="uploadProduct($event)">
+        </label>
+      </div>
+
+      <!-- Stat Cards -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+        <a href="/dispatch?filter=needs_action" class="stat-card stat-card-alert">
+          <div class="stat-number" x-text="needsActionCount">0</div>
+          <div class="stat-label">待人工处理</div>
+        </a>
+        <a href="/dispatch?filter=due_today" class="stat-card">
+          <div class="stat-number" x-text="dueTodayCount">0</div>
+          <div class="stat-label">今日到点</div>
+        </a>
+        <a href="/dispatch?filter=in_progress" class="stat-card">
+          <div class="stat-number" x-text="inProgressCount">0</div>
+          <div class="stat-label">进行中</div>
+        </a>
+        <a href="/dispatch?filter=failed_today" class="stat-card stat-card-warning">
+          <div class="stat-number" x-text="failedTodayCount">0</div>
+          <div class="stat-label">今日失败</div>
+        </a>
+      </div>
+
+      <!-- 待发送记录 -->
+      <section class="mb-8">
+        <h2 class="text-lg font-bold mb-3">待发送记录</h2>
+        <div x-show="pendingSendTasks.length === 0" class="p-4 bg-gray-50 text-gray-500 rounded-lg text-sm border" x-cloak>
+          暂无待发送记录
+        </div>
+        <div x-show="pendingSendTasks.length > 0" class="space-y-2" x-cloak>
+          <template x-for="t in pendingSendTasks" :key="t.task_id">
+            <a :href="`/dispatch/${t.task_id}`" class="flex items-center justify-between p-3 bg-white border rounded-lg hover:shadow-sm no-underline text-gray-900 transition">
+              <div class="flex items-center gap-3">
+                <span class="status-badge" :class="badgeClass(t.status)" x-text="statusLabel(t.status)"></span>
+                <span class="text-sm font-medium" x-text="t.wx_remark"></span>
+                <span class="text-xs text-gray-500" x-text="t.send_codes.join(', ')"></span>
+              </div>
+              <div class="text-xs text-gray-400" x-text="formatTime(t.trigger_at)"></div>
+            </a>
+          </template>
+        </div>
+      </section>
+
+      <!-- Boot Self-Check -->
+      <section class="mb-8">
+        <h2 class="text-lg font-bold mb-3">启动自检</h2>
+        <div x-show="alertTasks.length === 0" class="p-4 bg-green-50 text-green-800 rounded-lg text-sm" x-cloak>
+          全部正常，无需处理
+        </div>
+        <div x-show="alertTasks.length > 0" class="space-y-2" x-cloak>
+          <template x-for="t in alertTasks" :key="t.task_id">
+            <a :href="`/dispatch/${t.task_id}`" class="flex items-center justify-between p-3 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 no-underline text-gray-900">
+              <div class="flex items-center gap-3">
+                <span class="status-badge" :class="badgeClass(t.status)" x-text="statusLabel(t.status)"></span>
+                <span class="text-sm font-medium" x-text="t.wx_remark"></span>
+                <span class="text-xs text-gray-500" x-text="t.send_codes.join(', ')"></span>
+              </div>
+              <div class="flex items-center gap-2">
+                <span class="text-xs text-red-600" x-text="t.fail_reason || ''"></span>
+                <span class="text-gray-400">&rarr;</span>
+              </div>
+            </a>
+          </template>
+        </div>
+      </section>
+
+      <!-- WeChat Status -->
+      <section class="mb-8">
+        <h2 class="text-lg font-bold mb-3">微信状态</h2>
+        <div class="p-4 border rounded-lg bg-white">
+          <template x-if="wechatStatus === null">
+            <span class="text-sm text-gray-500">加载中...</span>
+          </template>
+          <template x-if="wechatStatus && wechatStatus.platform_supported === false">
+            <div class="flex items-center gap-2 text-amber-700">
+              <span class="w-3 h-3 rounded-full bg-gray-400"></span>
+              <span class="text-sm font-medium">未接入 / 平台不支持</span>
+              <span class="text-xs text-gray-500" x-text="wechatStatus.reason"></span>
+            </div>
+          </template>
+          <template x-if="wechatStatus && wechatStatus.platform_supported === true && wechatStatus.connected === true">
+            <div class="flex items-center gap-2 text-green-700">
+              <span class="w-3 h-3 rounded-full bg-green-500"></span>
+              <span class="text-sm font-medium">已连接</span>
+            </div>
+          </template>
+          <template x-if="wechatStatus && wechatStatus.platform_supported === true && wechatStatus.connected === false">
+            <div class="flex items-center gap-2 text-red-700">
+              <span class="w-3 h-3 rounded-full bg-red-500"></span>
+              <span class="text-sm font-medium">未连接</span>
+              <span class="text-xs text-gray-500" x-text="wechatStatus.reason"></span>
+            </div>
+          </template>
+        </div>
+      </section>
+
+      <!-- Current Config -->
+      <section class="mb-8">
+        <h2 class="text-lg font-bold mb-3">当前配置</h2>
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div class="p-4 border rounded-lg bg-white">
+            <div class="text-xs text-gray-500 mb-1">Provider</div>
+            <div class="font-semibold" x-text="settings ? settings.dispatch_image_provider : '—'"></div>
+          </div>
+          <div class="p-4 border rounded-lg bg-white">
+            <div class="text-xs text-gray-500 mb-1">发送间隔</div>
+            <div class="font-semibold" x-text="settings ? `${settings.wechat_send_interval_min}s ~ ${settings.wechat_send_interval_max}s` : '—'"></div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <script src="/static/shared.js"></script>
+  <script>
+  function dashboard() {
+    return {
+      tasks: [],
+      settings: null,
+      wechatStatus: null,
+      wechatHealth: null,
+      needsActionCount: 0,
+      dueTodayCount: 0,
+      inProgressCount: 0,
+      failedTodayCount: 0,
+      alertTasks: [],
+      pendingSendTasks: [],
+      async init() {
+        await this.refresh();
+        setInterval(() => this.refresh(), 4000);
+      },
+      async refresh() {
+        try {
+          const [tasksRes, settingsRes, wechatRes, healthRes] = await Promise.all([
+            fetch('/api/dispatch'),
+            fetch('/api/settings'),
+            fetch('/api/wechat/status'),
+            fetch('/api/wechat/health'),
+          ]);
+          this.tasks = await tasksRes.json();
+          this.settings = await settingsRes.json();
+          this.wechatStatus = await wechatRes.json();
+          this.wechatHealth = await healthRes.json();
+          this.compute();
+        } catch (e) { console.error(e); }
+      },
+      compute() {
+        const now = new Date();
+        const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+        this.needsActionCount = this.tasks.filter(t => t.status === 'needs_review').length;
+        this.dueTodayCount = this.tasks.filter(t => {
+          if (t.status !== 'pending') return false;
+          const trigger = new Date(t.trigger_at);
+          return trigger.toDateString() === now.toDateString();
+        }).length;
+        this.inProgressCount = this.tasks.filter(t => ['generating', 'ready', 'sending'].includes(t.status)).length;
+        this.failedTodayCount = this.tasks.filter(t => {
+          return t.status === 'failed' && t.created_at >= todayStart;
+        }).length;
+        this.alertTasks = this.tasks.filter(t =>
+          ['needs_review', 'failed'].includes(t.status) ||
+          (t.status === 'pending' && new Date(t.trigger_at) < now)
+        );
+        this.pendingSendTasks = this.tasks.filter(t =>
+          ['pending', 'ready', 'generating'].includes(t.status)
+        ).sort((a, b) => new Date(a.trigger_at) - new Date(b.trigger_at));
+      },
+      badgeClass(status) { return window._badgeClass(status); },
+      statusLabel(status) { return window._statusLabel(status); },
+      formatTime(iso) { return window._formatTime(iso); },
+      async uploadProduct(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+        try {
+          const formData = new FormData();
+          formData.append('image', file);
+          const res = await fetch('/api/products/upload', { method: 'POST', body: formData });
+          if (res.ok) {
+            alert('上传成功');
+          } else {
+            const d = await res.json();
+            alert((d.error && d.error.message) || '上传失败');
+          }
+        } catch {
+          alert('网络错误，上传失败');
+        } finally {
+          event.target.value = '';
+        }
+      },
+    };
+  }
+  </script>
+</body>
+</html>
+</content>
+</invoke>

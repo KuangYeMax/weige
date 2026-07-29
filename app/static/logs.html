@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>同物景 · 发送日志</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <link rel="stylesheet" href="/static/shared.css">
+</head>
+<body class="bg-gray-50">
+  <div x-data="logsPage()" x-init="init()">
+
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <a href="/dashboard" class="sidebar-brand">
+        <span class="brand-icon">同</span>
+        <span>同物景</span>
+      </a>
+      <nav class="sidebar-nav">
+        <a href="/dashboard" class="nav-link">告警台</a>
+        <a href="/products" class="nav-link">产品库</a>
+        <a href="/dispatch" class="nav-link">待发列表</a>
+        <a href="/logs" class="nav-link active">发送日志</a>
+        <a href="/settings" class="nav-link">设置</a>
+      </nav>
+    </aside>
+
+    <!-- Main -->
+    <div class="main-content">
+      <h1 class="text-2xl font-bold mb-6">发送日志</h1>
+      <div class="flex gap-2 mb-4">
+        <button @click="resultFilter = ''" class="px-2 py-1 text-xs rounded" :class="resultFilter === '' ? 'bg-gray-800 text-white' : 'bg-gray-100'">全部</button>
+        <button @click="resultFilter = 'sent'" class="px-2 py-1 text-xs rounded" :class="resultFilter === 'sent' ? 'bg-green-600 text-white' : 'bg-green-50 text-green-700'">已发送</button>
+        <button @click="resultFilter = 'failed'" class="px-2 py-1 text-xs rounded" :class="resultFilter === 'failed' ? 'bg-red-600 text-white' : 'bg-red-50 text-red-700'">失败</button>
+        <button @click="resultFilter = 'abandoned'" class="px-2 py-1 text-xs rounded" :class="resultFilter === 'abandoned' ? 'bg-gray-600 text-white' : 'bg-gray-100'">已放弃</button>
+      </div>
+
+      <div class="bg-white rounded-lg shadow overflow-hidden">
+        <table class="w-full text-sm">
+          <thead class="bg-gray-50 text-left text-xs text-gray-500 uppercase">
+            <tr><th class="px-4 py-3">时间</th><th class="px-4 py-3">好友</th><th class="px-4 py-3">编号</th><th class="px-4 py-3">结果</th><th class="px-4 py-3">失败原因</th></tr>
+          </thead>
+          <tbody class="divide-y">
+            <template x-for="t in filtered" :key="t.task_id">
+              <tr class="hover:bg-gray-50">
+                <td class="px-4 py-3 text-xs whitespace-nowrap" x-text="formatTime(t.trigger_at)"></td>
+                <td class="px-4 py-3 font-medium" x-text="t.wx_remark"></td>
+                <td class="px-4 py-3 text-xs" x-text="t.send_codes.join(', ')"></td>
+                <td class="px-4 py-3"><span class="status-badge" :class="badgeClass(t.status)" x-text="statusLabel(t.status)"></span></td>
+                <td class="px-4 py-3 text-xs text-red-600 max-w-xs truncate" x-text="t.fail_reason || '—'" :title="t.fail_reason || ''"></td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+        <div x-show="filtered.length === 0" class="text-center py-8 text-gray-400">无匹配记录</div>
+      </div>
+    </div>
+  </div>
+  <script src="/static/shared.js"></script>
+  <script>
+  function logsPage() {
+    return {
+      tasks: [], resultFilter: '',
+      get filtered() {
+        let list = this.tasks.filter(t => ['sent','failed','abandoned','needs_review'].includes(t.status));
+        if (this.resultFilter) list = list.filter(t => t.status === this.resultFilter);
+        list.sort((a, b) => (b.trigger_at || '').localeCompare(a.trigger_at || ''));
+        return list;
+      },
+      async init() { await this.load(); setInterval(() => this.load(), 5000); },
+      async load() { try { this.tasks = await (await fetch('/api/dispatch')).json(); } catch {} },
+      formatTime(iso) { return window._formatTime(iso); },
+      badgeClass(s) { return window._badgeClass(s); },
+      statusLabel(s) { return window._statusLabel(s); },
+    };
+  }
+  </script>
+</body>
+</html>

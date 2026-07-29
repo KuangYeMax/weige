@@ -1,0 +1,158 @@
+import json
+import sqlite3
+
+
+def test_valid_image_upload_returns_accessible_original_without_fact_card(client, image_bytes):
+    response = client.post(
+        "/api/products/upload",
+        files={"image": ("product.jpg", image_bytes, "image/jpeg")},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["product_id"]
+    # 事实卡推迟到「新建待发记录 → generating 阶段」生成，上传不再返回。
+    assert payload["fact_card"] is None
+    assert payload["image_info"] == {"width": 720, "height": 960, "size_bytes": len(image_bytes)}
+    assert client.get(payload["original_image_url"]).status_code == 200
+
+
+def test_upload_persists_catalog_row_with_image_pointer_only(client, settings, image_bytes):
+    response = client.post(
+        "/api/products/upload",
+        files={"image": ("product.jpg", image_bytes, "image/jpeg")},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    product = next(
+        product
+        for product in client.get("/api/products").json()["products"]
+        if product["product_id"] == payload["product_id"]
+    )
+    # 上传时用文件名登记，事实卡待 generating 阶段生成时再回填真实名称。
+    assert product["name"] == "product"
+    assert product["image_path"] == payload["original_image_url"].removeprefix("/storage/")
+    assert product["image_path"].endswith(".jpg")
+    assert product["fact_card_path"] == f"metadata/product-{payload['product_id']}.json"
+
+    metadata_path = settings.storage_root / product["fact_card_path"]
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    # 事实卡尚未生成。
+    assert metadata["fact_card"] is None
+    assert metadata["original_image_path"].endswith(".jpg")
+
+
+def test_upload_uses_original_filename_as_name(client, image_bytes):
+    response = client.post(
+        "/api/products/upload",
+        files={"image": ("上传文件名.png", image_bytes, "image/jpeg")},
+    )
+
+    assert response.status_code == 200
+    product_id = response.json()["product_id"]
+    product = next(
+        item for item in client.get("/api/products").json()["products"] if item["product_id"] == product_id
+    )
+    # 上传不再生成事实卡，产品名直接用文件名（去扩展名）。
+    assert product["name"] == "上传文件名"
+
+
+def test_upload_database_failure_is_explicit_and_rolls_back_files(client, settings, image_bytes, monkeypatch):
+    from app.api import products
+
+    def fail_upsert(*args, **kwargs):
+        raise sqlite3.OperationalError("database unavailable")
+
+    monkeypatch.setattr(products, "upsert_product", fail_upsert)
+    response = client.post(
+        "/api/products/upload",
+        files={"image": ("product.jpg", image_bytes, "image/jpeg")},
+    )
+
+    assert response.status_code == 500
+    assert response.json()["error"]["code"] == "PRODUCT_DB_SAVE_FAILED"
+    assert not list((settings.storage_root / "metadata").glob("product-*.json"))
+    assert not list((settings.storage_root / "uploads").iterdir())
+    assert client.get("/api/products").json()["products"] == []
+
+
+def test_non_image_upload_is_rejected(client):
+    response = client.post(
+        "/api/products/upload",
+        files={"image": ("fake.jpg", b"<html>not an image</html>", "image/jpeg")},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "IMAGE_INVALID"
+
+
+def test_unsupported_content_type_is_rejected(client):
+    response = client.post(
+        "/api/products/upload",
+        files={"image": ("vector.svg", b"<svg></svg>", "image/svg+xml")},
+    )
+
+    assert response.status_code == 415
+    assert response.json()["error"]["code"] == "IMAGE_FORMAT_UNSUPPORTED"
+
+
+def test_oversized_file_is_rejected(client):
+    response = client.post(
+        "/api/products/upload",
+        files={"image": ("large.jpg", b"x" * (10 * 1024 * 1024 + 1), "image/jpeg")},
+    )
+
+    assert response.status_code == 413
+    assert response.json()["error"]["code"] == "IMAGE_TOO_LARGE"
+
+
+def test_image_with_too_small_dimension_is_rejected(client):
+    import io
+
+    from PIL import Image
+
+    output = io.BytesIO()
+    Image.new("RGB", (511, 900), "white").save(output, format="PNG")
+    response = client.post(
+        "/api/products/upload",
+        files={"image": ("small.png", output.getvalue(), "image/png")},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "IMAGE_TOO_SMALL"
+
+
+def test_decompression_bomb_dimensions_are_rejected(client):
+    import struct
+    import zlib
+
+    def chunk(kind, data):
+        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data))
+
+    ihdr = struct.pack(">IIBBBBB", 20000, 20000, 8, 2, 0, 0, 0)
+    crafted_png = b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", ihdr) + chunk(b"IEND", b"")
+
+    response = client.post(
+        "/api/products/upload",
+        files={"image": ("huge.png", crafted_png, "image/png")},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "IMAGE_DIMENSIONS_TOO_LARGE"
+
+
+def test_upload_file_save_failure_uses_structured_error(client, image_bytes, monkeypatch):
+    from PIL import Image
+
+    def fail_save(*args, **kwargs):
+        raise OSError("disk unavailable")
+
+    monkeypatch.setattr(Image.Image, "save", fail_save)
+    response = client.post(
+        "/api/products/upload",
+        files={"image": ("product.jpg", image_bytes, "image/jpeg")},
+    )
+
+    assert response.status_code == 500
+    assert response.json()["error"]["code"] == "FILE_SAVE_FAILED"

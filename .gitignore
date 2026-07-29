@@ -12,3 +12,4 @@ storage/dispatch/*
 !storage/metadata/.gitkeep
 !storage/dispatch/.gitkeep
 .playwright-mcp/
+storage/app.db

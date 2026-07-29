@@ -31,6 +31,14 @@ def client(settings):
         yield test_client
 
 
+@pytest.fixture(autouse=True)
+def _isolate_settings_env_file(tmp_path, monkeypatch):
+    """隔离设置持久化写出的 .env，避免测试污染项目根真实 .env。"""
+    import app.api.settings as settings_mod
+
+    monkeypatch.setattr(settings_mod, "_ENV_PATH", str(tmp_path / ".env"))
+
+
 @pytest.fixture
 def image_bytes():
     output = io.BytesIO()

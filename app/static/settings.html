@@ -88,17 +88,60 @@
             <div x-show="openingMsg" class="text-xs mt-2" :class="openingMsg.startsWith('错') ? 'text-red-600' : 'text-green-600'" x-text="openingMsg" x-cloak></div>
           </section>
 
-          <!-- Read-only configs -->
+          <!-- 微信坐标 -->
           <section class="bg-white rounded-lg shadow p-6">
-            <h2 class="font-bold text-lg mb-4">只读配置</h2>
-            <div class="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
-              <div class="p-2 border rounded"><span class="text-xs text-gray-500 block">微信搜索栏 X</span><span x-text="s.wechat_search_bar_x"></span></div>
-              <div class="p-2 border rounded"><span class="text-xs text-gray-500 block">微信搜索栏 Y</span><span x-text="s.wechat_search_bar_y"></span></div>
-              <div class="p-2 border rounded"><span class="text-xs text-gray-500 block">输入框 X 偏移</span><span x-text="s.wechat_input_x_offset"></span></div>
-              <div class="p-2 border rounded"><span class="text-xs text-gray-500 block">输入框 Y 偏移</span><span x-text="s.wechat_input_y_offset"></span></div>
-              <div class="p-2 border rounded"><span class="text-xs text-gray-500 block">调色</span><span x-text="s.post_grade ? '开启' : '关闭'"></span></div>
-              <div class="p-2 border rounded"><span class="text-xs text-gray-500 block">真实池</span><span x-text="s.realism_pool ? '开启' : '关闭'"></span></div>
+            <h2 class="font-bold text-lg mb-4">微信窗口坐标</h2>
+            <p class="text-xs text-gray-500 mb-4">用于自动定位微信搜索栏与输入框（仅 Windows 生效）。保存后永久生效，重启不丢。</p>
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div><label class="text-xs text-gray-500">搜索栏 X</label><input type="number" x-model.number="coordinates.wechat_search_bar_x" class="w-full border rounded px-3 py-2 text-sm mt-1"></div>
+              <div><label class="text-xs text-gray-500">搜索栏 Y</label><input type="number" x-model.number="coordinates.wechat_search_bar_y" class="w-full border rounded px-3 py-2 text-sm mt-1"></div>
+              <div><label class="text-xs text-gray-500">输入框 X 偏移</label><input type="number" x-model.number="coordinates.wechat_input_x_offset" class="w-full border rounded px-3 py-2 text-sm mt-1"></div>
+              <div><label class="text-xs text-gray-500">输入框 Y 偏移</label><input type="number" x-model.number="coordinates.wechat_input_y_offset" class="w-full border rounded px-3 py-2 text-sm mt-1"></div>
             </div>
+            <button @click="saveCoordinates()" :disabled="savingCoords" class="mt-4 px-4 py-2 bg-green-600 text-white rounded text-sm disabled:opacity-50" x-text="savingCoords ? '保存中...' : '保存坐标'"></button>
+            <div x-show="coordsMsg" class="text-xs mt-2" :class="coordsMsg.startsWith('错') ? 'text-red-600' : 'text-green-600'" x-text="coordsMsg" x-cloak></div>
+          </section>
+
+          <!-- 生图与一致性校验 -->
+          <section class="bg-white rounded-lg shadow p-6">
+            <h2 class="font-bold text-lg mb-4">生图与一致性校验</h2>
+            <p class="text-xs text-gray-500 mb-4">这些参数调整生图保真与重试策略，保存后永久生效，重启不丢。</p>
+            <div class="space-y-4">
+              <div class="flex items-center justify-between">
+                <label class="text-sm text-gray-600">一致性校验（生成图 vs 原图比对）</label>
+                <input type="checkbox" x-model="strategy.consistency_check">
+              </div>
+              <div><label class="text-xs text-gray-500">一致性校验最大重试次数</label><input type="number" min="1" x-model.number="strategy.consistency_check_max_retries" class="w-full border rounded px-3 py-2 text-sm mt-1"></div>
+              <div class="flex items-center justify-between">
+                <label class="text-sm text-gray-600">百炼 thinking_mode</label>
+                <input type="checkbox" x-model="strategy.bailian_thinking_mode">
+              </div>
+              <hr class="my-2 border-gray-100">
+              <div class="flex items-center justify-between">
+                <label class="text-sm text-gray-600">阶梯式降级重试</label>
+                <input type="checkbox" x-model="strategy.degraded_retry_enabled">
+              </div>
+              <div><label class="text-xs text-gray-500">降级重试最大档数 (1-4)</label><input type="number" min="1" max="4" x-model.number="strategy.degraded_retry_max_attempts" class="w-full border rounded px-3 py-2 text-sm mt-1"></div>
+              <div class="flex items-center justify-between">
+                <label class="text-sm text-gray-600">数量强调注入</label>
+                <input type="checkbox" x-model="strategy.degraded_retry_count_emphasis">
+              </div>
+              <div class="flex items-center justify-between">
+                <label class="text-sm text-gray-600">数量硬校验</label>
+                <input type="checkbox" x-model="strategy.count_hard_check_enabled">
+              </div>
+              <hr class="my-2 border-gray-100">
+              <div class="flex items-center justify-between">
+                <label class="text-sm text-gray-600">生成后调色</label>
+                <input type="checkbox" x-model="strategy.post_grade">
+              </div>
+              <div class="flex items-center justify-between">
+                <label class="text-sm text-gray-600">真实池</label>
+                <input type="checkbox" x-model="strategy.realism_pool">
+              </div>
+            </div>
+            <button @click="saveStrategy()" :disabled="savingStrategy" class="mt-4 px-4 py-2 bg-green-600 text-white rounded text-sm disabled:opacity-50" x-text="savingStrategy ? '保存中...' : '保存策略'"></button>
+            <div x-show="strategyMsg" class="text-xs mt-2" :class="strategyMsg.startsWith('错') ? 'text-red-600' : 'text-green-600'" x-text="strategyMsg" x-cloak></div>
           </section>
 
         </div>
@@ -114,6 +157,20 @@
       saving: false, saveMsg: '',
       opening: { wechat_opening_text: '' },
       savingOpening: false, openingMsg: '',
+      coordinates: { wechat_search_bar_x: 0, wechat_search_bar_y: 0, wechat_input_x_offset: 0, wechat_input_y_offset: 0 },
+      savingCoords: false, coordsMsg: '',
+      strategy: {
+        consistency_check: true,
+        consistency_check_max_retries: 1,
+        bailian_thinking_mode: true,
+        degraded_retry_enabled: true,
+        degraded_retry_max_attempts: 4,
+        degraded_retry_count_emphasis: true,
+        count_hard_check_enabled: false,
+        post_grade: true,
+        realism_pool: true,
+      },
+      savingStrategy: false, strategyMsg: '',
       apiKeys: { ark_api_key: '', deepseek_api_key: '', dashscope_api_key: '' },
       savingKeys: false, keyMsg: '',
       async init() { await this.load(true); setInterval(() => this.load(false), 5000); },
@@ -127,6 +184,19 @@
             this.form.random_interval_max = this.s.wechat_send_interval_max;
             this.form.dispatch_provider = this.s.dispatch_image_provider;
             this.opening.wechat_opening_text = this.s.wechat_opening_text || '';
+            this.coordinates.wechat_search_bar_x = this.s.wechat_search_bar_x;
+            this.coordinates.wechat_search_bar_y = this.s.wechat_search_bar_y;
+            this.coordinates.wechat_input_x_offset = this.s.wechat_input_x_offset;
+            this.coordinates.wechat_input_y_offset = this.s.wechat_input_y_offset;
+            this.strategy.consistency_check = this.s.consistency_check;
+            this.strategy.consistency_check_max_retries = this.s.consistency_check_max_retries;
+            this.strategy.bailian_thinking_mode = this.s.bailian_thinking_mode;
+            this.strategy.degraded_retry_enabled = this.s.degraded_retry_enabled;
+            this.strategy.degraded_retry_max_attempts = this.s.degraded_retry_max_attempts;
+            this.strategy.degraded_retry_count_emphasis = this.s.degraded_retry_count_emphasis;
+            this.strategy.count_hard_check_enabled = this.s.count_hard_check_enabled;
+            this.strategy.post_grade = this.s.post_grade;
+            this.strategy.realism_pool = this.s.realism_pool;
           }
         } catch {}
       },
@@ -147,6 +217,24 @@
           else { const e = await res.json(); this.openingMsg = '错误: ' + (e.error?.message || '失败'); }
         } catch { this.openingMsg = '错误: 网络异常'; }
         finally { this.savingOpening = false; }
+      },
+      async saveCoordinates() {
+        this.savingCoords = true; this.coordsMsg = '';
+        try {
+          const res = await fetch('/api/settings', { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(this.coordinates) });
+          if (res.ok) { this.coordsMsg = '已保存'; await this.load(); }
+          else { const e = await res.json(); this.coordsMsg = '错误: ' + (e.error?.message || '失败'); }
+        } catch { this.coordsMsg = '错误: 网络异常'; }
+        finally { this.savingCoords = false; }
+      },
+      async saveStrategy() {
+        this.savingStrategy = true; this.strategyMsg = '';
+        try {
+          const res = await fetch('/api/settings', { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(this.strategy) });
+          if (res.ok) { this.strategyMsg = '已保存'; await this.load(); }
+          else { const e = await res.json(); this.strategyMsg = '错误: ' + (e.error?.message || '失败'); }
+        } catch { this.strategyMsg = '错误: 网络异常'; }
+        finally { this.savingStrategy = false; }
       },
       async saveApiKeys() {
         this.savingKeys = true; this.keyMsg = '';
